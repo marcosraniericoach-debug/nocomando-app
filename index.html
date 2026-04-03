@@ -59,9 +59,16 @@
     } from 'lucide-react';
 
     // --- CONFIGURAÇÃO FIREBASE ---
-    // Nota: Para funcionar perfeitamente no seu GitHub e salvar seus dados reais,
-    // você precisará substituir as chaves vazias {} pelas credenciais do seu projeto Firebase.
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+    // ATENÇÃO: Substitua os valores abaixo pelas credenciais reais do seu projeto Firebase
+    // para que o aplicativo salve os dados na nuvem de verdade.
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+      apiKey: "COLOQUE_SUA_API_KEY_AQUI",
+      authDomain: "SEU_PROJETO.firebaseapp.com",
+      projectId: "SEU_PROJECT_ID",
+      storageBucket: "SEU_PROJETO.appspot.com",
+      messagingSenderId: "123456789000",
+      appId: "1:123456789000:web:abcdef1234567890"
+    };
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
