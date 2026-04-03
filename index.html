@@ -1,1025 +1,841 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Planner #NoComando V2</title>
-
-  <!-- Tailwind CSS para o Design -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Babel: o tradutor que ensina o navegador a ler o seu código React -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Mapa de Importações: Diz ao navegador de onde baixar as bibliotecas -->
-  <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.2.0",
-        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-        "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
-        "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
-        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
-        "lucide-react": "https://esm.sh/lucide-react@0.330.0?external=react"
-      }
-    }
-  </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <title>#NoComando Planner</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Babel para traduzir o React no navegador -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
 </head>
-<body class="bg-neutral-200 antialiased selection:bg-black selection:text-white">
+<body class="bg-neutral-200">
+    <div id="root"></div>
 
-  <!-- A "tela em branco" onde o seu aplicativo será injetado -->
-  <div id="root"></div>
+    <!-- Usamos 'module' para carregar as bibliotecas de forma nativa e corrigir o Erro 130 -->
+    <script type="text/babel" data-presets="react" data-type="module">
+        import React, { useState, useEffect, useRef, useCallback } from 'https://esm.sh/react@18.2.0';
+        import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
+        
+        // Motor Firebase
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+        
+        // Ícones corretos do Lucide React (CheckSquare renomeado para SquareCheck para evitar erros)
+        import { 
+            SquareCheck, Square, Plus, Trash2, Loader2, LayoutGrid, ListTodo, FileText, 
+            CalendarDays, Clock, Calendar, CalendarRange, Cloud, CheckCircle2, AlertCircle, 
+            X, ArrowRight, ArrowLeft, FileUp, RefreshCw, Star, ChevronDown 
+        } from 'https://esm.sh/lucide-react@0.344.0';
 
-  <!-- O Seu Miolo Lógico (React) -->
-  <script type="text/babel" data-type="module">
-    import React, { useState, useEffect, useRef, useCallback } from 'react';
-    import { createRoot } from 'react-dom/client';
-    import { initializeApp } from 'firebase/app';
-    import { 
-      getAuth, 
-      signInWithCustomToken, 
-      signInAnonymously, 
-      onAuthStateChanged 
-    } from 'firebase/auth';
-    import { 
-      getFirestore, 
-      collection, 
-      addDoc, 
-      updateDoc, 
-      deleteDoc, 
-      doc, 
-      onSnapshot,
-      setDoc
-    } from 'firebase/firestore';
-    import { 
-      CheckSquare, Square, Plus, Trash2, Loader2, LayoutGrid, ListTodo, 
-      FileText, CalendarDays, Clock, Calendar, CalendarRange, Cloud, 
-      CheckCircle2, AlertCircle, X, ArrowRight, ArrowLeft, FileUp, 
-      RefreshCw, Star, ChevronDown
-    } from 'lucide-react';
-
-    // --- CONFIGURAÇÃO FIREBASE ---
-    // ATENÇÃO: Substitua os valores abaixo pelas credenciais reais do seu projeto Firebase
-    // para que o aplicativo salve os dados na nuvem de verdade.
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-      apiKey: "COLOQUE_SUA_API_KEY_AQUI",
-      authDomain: "SEU_PROJETO.firebaseapp.com",
-      projectId: "SEU_PROJECT_ID",
-      storageBucket: "SEU_PROJETO.appspot.com",
-      messagingSenderId: "123456789000",
-      appId: "1:123456789000:web:abcdef1234567890"
-    };
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'nocomando-planner-v2';
-
-    // --- UTILITÁRIOS DE DATA ---
-    const getTodayDateStr = () => {
-      const d = new Date();
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}/${month}/${year}`;
-    };
-
-    const getTodayDayOfWeekStr = () => {
-      const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-      return days[new Date().getDay()];
-    };
-
-    const getCurrentMonthYearStr = () => {
-      const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-      const d = new Date();
-      return `${months[d.getMonth()]} ${d.getFullYear()}`;
-    };
-
-    const getWeekNumber = (date = new Date()) => {
-      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-      const dayNum = d.getUTCDay() || 7;
-      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-      return String(Math.ceil((((d - yearStart) / 86400000) + 1) / 7));
-    };
-
-    const getDateForDayOfWeek = (dayLabel) => {
-      const daysMap = { 'Dom': 0, 'Seg': 1, 'Ter': 2, 'Qua': 3, 'Qui': 4, 'Sex': 5, 'Sáb': 6 };
-      const targetDay = daysMap[dayLabel];
-      if (targetDay === undefined) return getTodayDateStr();
-
-      const d = new Date();
-      const currentDay = d.getDay();
-      const diff = targetDay - currentDay;
-      d.setDate(d.getDate() + diff);
-
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}/${month}/${year}`;
-    };
-
-    // --- CONSTANTES INICIAIS ---
-    const getEmptyFpaDay = () => ({
-      date: '', 
-      foco: '',
-      prioridades: Array(5).fill({ text: '', completed: false, fromArea: null }),
-      extras: Array(6).fill({ text: '', completed: false, fromArea: null }),
-      evitar: '', solucao: '', nota: '', aprendizado: '',
-      gratidao1: '', gratidao2: '', gratidao3: ''
-    });
-
-    const initialFpa = {
-      week: getWeekNumber(),
-      days: {
-        'Dom': getEmptyFpaDay(), 'Seg': getEmptyFpaDay(), 'Ter': getEmptyFpaDay(),
-        'Qua': getEmptyFpaDay(), 'Qui': getEmptyFpaDay(), 'Sex': getEmptyFpaDay(), 'Sáb': getEmptyFpaDay()
-      }
-    };
-
-    const initialCalendario = {
-      month: getCurrentMonthYearStr(),
-      grid: {}
-    };
-
-    const initialDrd = {
-      date: getTodayDateStr(), 
-      dayOfWeek: getTodayDayOfWeekStr(),
-      grid: {}
-    };
-
-    const drdDays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
-    const drdPeriods = ['manha', 'tarde', 'noite'];
-    const drdPeriodLabels = ['MANHÃ', 'TARDE', 'NOITE'];
-    const drdDayLabels = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'];
-
-    const agendaSemanalHours = Array.from({ length: 19 }, (_, i) => i + 5); 
-    const agendaSemanalDays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
-    const initialAgendaSemanal = {
-      week: getWeekNumber(),
-      grid: {}
-    };
-
-    const agendaHoursLeft = ['5h.', '6h.', '7h.', '8h.', '9h.', '10h.', '11h.', '12h.', '13h.'];
-    const agendaHoursRight = ['14h.', '15h.', '16h.', '17h.', '18h.', '19h.', '20h.', '21h.', '22h.'];
-    const allAgendaHours = [...agendaHoursLeft, ...agendaHoursRight];
-
-    const initialAgenda = {
-      date: getTodayDateStr(), 
-      dayOfWeek: getTodayDayOfWeekStr(),
-      tasks: {}
-    };
-
-    const fpaDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    const dayMap = { 'Dom': 'dom', 'Seg': 'seg', 'Ter': 'ter', 'Qua': 'qua', 'Qui': 'qui', 'Sex': 'sex', 'Sáb': 'sab' };
-    const agendaSemanalDayLabels = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'];
-    const calendarioDayLabels = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'];
-
-    // --- COMPONENTES AUXILIARES ---
-    const Toast = ({ message, type, onClose }) => (
-      <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl transition-all duration-300 ${type === 'error' ? 'bg-red-600 text-white' : 'bg-black text-white'}`}>
-        {type === 'error' ? <AlertCircle className="w-5 h-5" /> : <Cloud className="w-5 h-5 text-green-400" />}
-        <span className="font-bold text-sm uppercase tracking-wider">{message}</span>
-        <button onClick={onClose} className="ml-2 hover:opacity-70 transition-opacity">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-    );
-
-    const BubbleBox = ({ title, children, className = "", innerClassName = "" }) => (
-      <div className={`relative mb-6 ${className}`}>
-        <div className="font-bold italic text-xl mb-1 ml-2 tracking-tight uppercase leading-none">{title}</div>
-        <div className={`border-[2px] border-black rounded-xl p-5 relative bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${innerClassName}`}>
-          <div className="absolute -top-[11px] left-8 w-5 h-5 border-t-[2px] border-l-[2px] border-black bg-white transform rotate-45"></div>
-          {children}
-        </div>
-      </div>
-    );
-
-    const AutoResizeTextarea = ({ value, onChange, onBlur, className, placeholder, rows = 1 }) => {
-      const textareaRef = useRef(null);
-
-      useEffect(() => {
-        if (textareaRef.current) {
-          textareaRef.current.style.height = 'auto';
-          textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+        // --- CONFIGURAÇÃO FIREBASE PROTEGIDA PARA VERCEL ---
+        const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+        const firebaseConfig = JSON.parse(firebaseConfigStr);
+        let app, auth, db;
+        if (Object.keys(firebaseConfig).length > 0) {
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+            } catch (e) { console.warn("Erro ao iniciar Firebase", e); }
         }
-      }, [value]);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'nocomando-planner-v2';
 
-      return (
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={onChange}
-          onBlur={onBlur}
-          className={`${className} overflow-hidden resize-none`}
-          placeholder={placeholder}
-          rows={rows}
-        />
-      );
-    };
-
-    // --- UTILITÁRIOS ---
-    const getMonthInfo = (monthStr) => {
-      if (!monthStr) return null;
-      const str = monthStr.toLowerCase().trim();
-      const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-      const shortMonths = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-
-      let monthIdx = -1;
-      for (let i = 0; i < 12; i++) {
-        if (str.includes(months[i]) || str.includes(shortMonths[i])) {
-          monthIdx = i;
-          break;
-        }
-      }
-      if (monthIdx === -1) return null;
-      const yearMatch = str.match(/\d{4}/);
-      const year = yearMatch ? parseInt(yearMatch[0], 10) : new Date().getFullYear();
-      return { month: monthIdx, year };
-    };
-
-    // --- COMPONENTE PRINCIPAL ---
-    function App() {
-      const [user, setUser] = useState(null);
-      const [loading, setLoading] = useState(true);
-      const [toast, setToast] = useState(null);
-      
-      const [activeTab, setActiveTab] = useState('dtq');
-
-      const [tasks, setTasks] = useState([]);
-      const [newTask, setNewTask] = useState('');
-
-      const [calendarioData, setCalendarioData] = useState(initialCalendario);
-      const [cicloTasks, setCicloTasks] = useState([]);
-      const [cicloConfig, setCicloConfig] = useState({ week: getWeekNumber(), dateStart: '', dateEnd: '', area1: '', area2: '', area3: '', area4: '' });
-      const [agendaSemanalData, setAgendaSemanalData] = useState(initialAgendaSemanal);
-      
-      const [activeFpaDay, setActiveFpaDay] = useState(getTodayDayOfWeekStr());
-      const [fpaData, setFpaData] = useState(initialFpa);
-      
-      const [agendaData, setAgendaData] = useState(initialAgenda);
-      const [drdData, setDrdData] = useState(initialDrd);
-
-      const [movingTask, setMovingTask] = useState(null); 
-      const [copyingToWeekTask, setCopyingToWeekTask] = useState(null);
-
-      const showToast = useCallback((message, type = 'success') => {
-        setToast({ message, type });
-        setTimeout(() => setToast(null), 4000);
-      }, []);
-
-      // --- AUTENTICAÇÃO ---
-      useEffect(() => {
-        const initAuth = async () => {
-          try {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-              await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-              await signInAnonymously(auth);
-            }
-          } catch (error) {
-            console.error(error);
-            showToast("Modo local. Configure o Firebase para salvar dados.", "error");
-            setLoading(false);
-          }
+        // --- UTILITÁRIOS DE DATA ---
+        const getTodayDateStr = () => {
+            const d = new Date();
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}/${month}/${year}`;
         };
-        initAuth();
 
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-          setUser(currentUser);
-          if (!currentUser) setLoading(false);
+        const getTodayDayOfWeekStr = () => {
+            const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+            return days[new Date().getDay()];
+        };
+
+        const getCurrentMonthYearStr = () => {
+            const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+            const d = new Date();
+            return `${months[d.getMonth()]} ${d.getFullYear()}`;
+        };
+
+        const getWeekNumber = (date = new Date()) => {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            return String(Math.ceil((((d - yearStart) / 86400000) + 1) / 7));
+        };
+
+        const getDateForDayOfWeek = (dayLabel) => {
+            const daysMap = { 'Dom': 0, 'Seg': 1, 'Ter': 2, 'Qua': 3, 'Qui': 4, 'Sex': 5, 'Sáb': 6 };
+            const targetDay = daysMap[dayLabel];
+            if (targetDay === undefined) return getTodayDateStr();
+
+            const d = new Date();
+            const currentDay = d.getDay();
+            const diff = targetDay - currentDay;
+            d.setDate(d.getDate() + diff);
+
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}/${month}/${year}`;
+        };
+
+        // --- CONSTANTES INICIAIS ---
+        const getEmptyFpaDay = () => ({
+            date: '', foco: '',
+            prioridades: Array(5).fill({ text: '', completed: false, fromArea: null }),
+            extras: Array(6).fill({ text: '', completed: false, fromArea: null }),
+            evitar: '', solucao: '', nota: '', aprendizado: '',
+            gratidao1: '', gratidao2: '', gratidao3: ''
         });
 
-        return () => unsubscribe();
-      }, [showToast]);
-
-      // --- BUSCA DE DADOS (FIRESTORE) ---
-      useEffect(() => {
-        if (!user) return;
-        setLoading(true);
-        const unsubscribers = [];
-
-        try {
-          unsubscribers.push(onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks'), (snap) => {
-            const t = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            t.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-            setTasks(t);
-            setLoading(false);
-          }, (err) => { console.log(err); setLoading(false); }));
-
-          unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'calendario_config', 'main'), (snap) => {
-            if (snap.exists()) setCalendarioData(prev => ({ ...prev, ...snap.data() }));
-          }));
-
-          unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_config', 'main'), (snap) => {
-            if (snap.exists()) {
-              const data = snap.data();
-              setCicloConfig(prev => ({ ...prev, ...data, week: data.week || getWeekNumber() }));
+        const initialFpa = {
+            week: getWeekNumber(),
+            days: {
+                'Dom': getEmptyFpaDay(), 'Seg': getEmptyFpaDay(), 'Ter': getEmptyFpaDay(),
+                'Qua': getEmptyFpaDay(), 'Qui': getEmptyFpaDay(), 'Sex': getEmptyFpaDay(), 'Sáb': getEmptyFpaDay()
             }
-          }));
-
-          unsubscribers.push(onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks'), (snap) => {
-            const t = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            t.sort((a, b) => a.createdAt - b.createdAt);
-            setCicloTasks(t);
-          }));
-
-          unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'agenda_semanal_config', 'main'), (snap) => {
-            if (snap.exists()) {
-              const data = snap.data();
-              setAgendaSemanalData(prev => ({ ...prev, ...data, week: data.week || getWeekNumber() }));
-            }
-          }));
-
-          unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'fpa_config', 'main'), (snap) => {
-            if (snap.exists()) {
-              const data = snap.data();
-              if (data.days) {
-                const d = data.days;
-                fpaDays.forEach(day => {
-                  if (!d[day]) d[day] = getEmptyFpaDay();
-                  if (!d[day].date) d[day].date = getDateForDayOfWeek(day);
-                });
-                setFpaData({ ...data, days: d });
-              } else {
-                const migratedDays = {
-                  'Dom': getEmptyFpaDay(), 'Seg': getEmptyFpaDay(), 'Ter': getEmptyFpaDay(),
-                  'Qua': getEmptyFpaDay(), 'Qui': getEmptyFpaDay(), 'Sex': getEmptyFpaDay(), 'Sáb': getEmptyFpaDay()
-                };
-                const oldDay = data.dayOfWeek || getTodayDayOfWeekStr();
-                migratedDays[oldDay] = { ...getEmptyFpaDay(), ...data };
-                fpaDays.forEach(day => { 
-                  if (!migratedDays[day].date) migratedDays[day].date = getDateForDayOfWeek(day); 
-                });
-                const newData = { week: data.week || getWeekNumber(), days: migratedDays };
-                setFpaData(newData);
-                setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'fpa_config', 'main'), newData, { merge: true });
-              }
-            } else {
-              const newInitial = { ...initialFpa };
-              fpaDays.forEach(day => { newInitial.days[day].date = getDateForDayOfWeek(day); });
-              setFpaData(newInitial);
-            }
-          }));
-
-          unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'agenda_config', 'main'), (snap) => {
-            if (snap.exists()) {
-              const data = snap.data();
-              setAgendaData(prev => ({ 
-                ...prev, 
-                ...data,
-                date: data.date || getTodayDateStr()
-              }));
-            }
-          }));
-
-          unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'drd_config', 'main'), (snap) => {
-            if (snap.exists()) setDrdData(prev => ({ ...prev, ...snap.data() }));
-          }));
-        } catch(e) {
-            console.error("Modo offline: ", e);
-            setLoading(false);
-        }
-
-        return () => unsubscribers.forEach(unsub => unsub && unsub());
-      }, [user, showToast]);
-
-      // --- PERSISTÊNCIA ---
-      const saveToFirestore = async (path, data, showMsg = true) => {
-        if (!user) return;
-        try {
-          const docRef = doc(db, 'artifacts', appId, 'users', user.uid, ...path);
-          await setDoc(docRef, data, { merge: true });
-          if (showMsg) showToast("Alterações salvas!");
-        } catch (e) { showToast("Erro ao salvar dados. Verifique a configuração.", "error"); }
-      };
-
-      // --- FUNÇÕES DE GESTÃO ---
-      const handleAddTask = async (e) => {
-        e.preventDefault();
-        if (!newTask.trim() || !user) return;
-        try {
-          await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks'), {
-            text: newTask.trim(), completed: false, createdAt: Date.now()
-          });
-          setNewTask('');
-        } catch (e) { showToast("Erro ao adicionar", "error"); }
-      };
-
-      const toggleTask = async (id, status) => {
-        if (!user) return;
-        try { await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks', id), { completed: !status }); } catch (e) { showToast("Erro ao atualizar", "error"); }
-      };
-
-      const deleteTask = async (id) => {
-        if (!user) return;
-        try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks', id)); } catch (e) { showToast("Erro ao excluir", "error"); }
-      };
-
-      const sendToCicloArea4 = async (task) => {
-        if (!user) return;
-        try {
-          await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks'), { text: task.text, area: 4, completed: false, createdAt: Date.now() });
-          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks', task.id));
-          showToast("Enviado para o Ciclo (Área 4)!");
-        } catch (e) { showToast("Erro ao mover", "error"); }
-      };
-
-      const cycleTaskArea = async (task) => {
-        if (!user) return;
-        const nextArea = task.area === 4 ? 1 : task.area + 1;
-        try {
-          await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', task.id), { area: nextArea });
-          showToast(`Movido para Área ${nextArea}`);
-        } catch (e) { showToast("Erro ao trocar área", "error"); }
-      };
-
-      const returnTaskToDtq = async (task) => {
-        if (!user) return;
-        try {
-          await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks'), { text: task.text, completed: false, createdAt: Date.now() });
-          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', task.id));
-          showToast("Devolvido para o DTQ!");
-        } catch (e) { showToast("Erro ao devolver", "error"); }
-      };
-
-      const sendCicloToFpaExtras = async (task) => {
-        if (!user) return;
-        const currentDayData = fpaData.days[activeFpaDay];
-        const newExtras = [...currentDayData.extras];
-        const emptyIdx = newExtras.findIndex(item => item.text.trim() === '');
-        if (emptyIdx === -1) { showToast(`FPA de ${activeFpaDay} sem espaço nos Extras!`, "error"); return; }
-        try {
-          newExtras[emptyIdx] = { text: task.text, completed: false, fromArea: task.area };
-          const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentDayData, extras: newExtras } };
-          await saveToFirestore(['fpa_config', 'main'], { days: newDays });
-          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', task.id));
-          showToast(`Promovido para FPA (${activeFpaDay} - Extras)!`);
-        } catch (e) { showToast("Erro ao enviar para FPA", "error"); }
-      };
-
-      const sendCicloToFpaPrioridades = async (task) => {
-        if (!user) return;
-        const currentDayData = fpaData.days[activeFpaDay];
-        const newPrioridades = [...currentDayData.prioridades];
-        const emptyIdx = newPrioridades.findIndex(item => item.text.trim() === '');
-        if (emptyIdx === -1) { showToast(`FPA de ${activeFpaDay} sem espaço nas Prioridades!`, "error"); return; }
-        try {
-          newPrioridades[emptyIdx] = { text: task.text, completed: false, fromArea: task.area };
-          const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentDayData, prioridades: newPrioridades } };
-          await saveToFirestore(['fpa_config', 'main'], { days: newDays });
-          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', task.id));
-          showToast(`Promovido para FPA (${activeFpaDay} - Prioridades)!`);
-        } catch (e) { showToast("Erro ao enviar para FPA", "error"); }
-      };
-
-      const sendFpaToAgenda = async (listName, index) => {
-        if (!user) return;
-        const currentDayData = fpaData.days[activeFpaDay];
-        const item = currentDayData[listName][index];
-        if (!item.text.trim()) return;
-
-        try {
-          const weekDay = dayMap[activeFpaDay] || 'seg';
-          const weekKey = `5-${weekDay}`;
-          
-          const newAgendaSemanalGrid = { ...agendaSemanalData.grid };
-          const currentWeekTasks = Array.isArray(newAgendaSemanalGrid[weekKey]) ? [...newAgendaSemanalGrid[weekKey]] : [];
-          newAgendaSemanalGrid[weekKey] = [...currentWeekTasks, { text: item.text, completed: false, fromArea: item.fromArea }];
-          
-          const newAgendaSemanalData = { ...agendaSemanalData, grid: newAgendaSemanalGrid };
-          setAgendaSemanalData(newAgendaSemanalData);
-          await saveToFirestore(['agenda_semanal_config', 'main'], newAgendaSemanalData, false);
-
-          const newList = [...currentDayData[listName]];
-          newList[index] = { text: '', completed: false, fromArea: null };
-          const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentDayData, [listName]: newList } };
-          setFpaData(prev => ({ ...prev, days: newDays }));
-          await saveToFirestore(['fpa_config', 'main'], { days: newDays });
-          
-          showToast("Enviado para Agenda!");
-        } catch (e) { showToast("Erro ao enviar para Agenda", "error"); }
-      };
-
-      const returnFpaToCiclo = async (listName, index) => {
-        if (!user) return;
-        const currentDayData = fpaData.days[activeFpaDay];
-        const item = currentDayData[listName][index];
-        if (!item.text.trim()) return;
-        try {
-          const targetArea = item.fromArea || 4;
-          await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks'), { text: item.text, area: targetArea, completed: false, createdAt: Date.now() });
-          
-          const newList = [...currentDayData[listName]];
-          newList[index] = { text: '', completed: false, fromArea: null };
-          const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentDayData, [listName]: newList } };
-          
-          await saveToFirestore(['fpa_config', 'main'], { days: newDays });
-          showToast(`Devolvido para Ciclo (Área ${targetArea})`);
-        } catch (e) { showToast("Erro ao devolver tarefa", "error"); }
-      };
-
-      const handleFpaChange = (field, value) => {
-        const currentDayData = fpaData.days[activeFpaDay];
-        const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentDayData, [field]: value } };
-        setFpaData(prev => ({ ...prev, days: newDays }));
-      };
-
-      const returnAgendaSemanalToCiclo = async (key, index) => {
-        if (!user) return;
-        const currentTasks = [...(agendaSemanalData.grid[key] || [])];
-        const task = currentTasks.splice(index, 1)[0];
-        const targetArea = task.fromArea || 4;
-
-        try {
-          await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks'), {
-            text: task.text,
-            area: targetArea,
-            completed: false,
-            createdAt: Date.now()
-          });
-
-          const newAgendaData = { ...agendaSemanalData, grid: { ...agendaSemanalData.grid, [key]: currentTasks } };
-          setAgendaSemanalData(newAgendaData);
-          await saveToFirestore(['agenda_semanal_config', 'main'], newAgendaData, false);
-          showToast(`Devolvido para Ciclo (Área ${targetArea})`);
-        } catch (e) { showToast("Erro ao devolver tarefa", "error"); }
-      };
-
-      const toggleAgendaSemanalTask = async (key, idx) => {
-        if (!user) return;
-        const current = [...(agendaSemanalData.grid[key] || [])];
-        current[idx].completed = !current[idx].completed;
-        const newData = { ...agendaSemanalData, grid: { ...agendaSemanalData.grid, [key]: current } };
-        setAgendaSemanalData(newData);
-        await saveToFirestore(['agenda_semanal_config', 'main'], newData, false);
-      };
-
-      const deleteAgendaSemanalTask = async (key, idx) => {
-        if (!user) return;
-        const current = [...(agendaSemanalData.grid[key] || [])];
-        current.splice(idx, 1);
-        const newData = { ...agendaSemanalData, grid: { ...agendaSemanalData.grid, [key]: current } };
-        setAgendaSemanalData(newData);
-        await saveToFirestore(['agenda_semanal_config', 'main'], newData, false);
-        showToast("Removido da semana");
-      };
-
-      const moveAgendaSemanalTaskToHour = async (key, taskIndex, targetHour) => {
-        if (!user) return;
-        const day = key.split('-')[1];
-        const nextKey = `${targetHour}-${day}`;
-        
-        const currentSource = [...(agendaSemanalData.grid[key] || [])];
-        const task = currentSource.splice(taskIndex, 1)[0];
-        const currentTarget = Array.isArray(agendaSemanalData.grid[nextKey]) ? [...agendaSemanalData.grid[nextKey]] : [];
-
-        const newData = { 
-          ...agendaSemanalData, 
-          grid: { 
-            ...agendaSemanalData.grid, 
-            [key]: currentSource,
-            [nextKey]: [...currentTarget, task]
-          } 
         };
-        setAgendaSemanalData(newData);
-        await saveToFirestore(['agenda_semanal_config', 'main'], newData, false);
-        setMovingTask(null);
-        showToast(`Movido para ${targetHour}h`);
-      };
 
-      const toggleCalendarioTask = async (key, idx) => {
-        if (!user) return;
-        const current = Array.isArray(calendarioData.grid[key]) ? [...calendarioData.grid[key]] : [];
-        current[idx].completed = !current[idx].completed;
-        const newData = { ...calendarioData, grid: { ...calendarioData.grid, [key]: current } };
-        setCalendarioData(newData);
-        await saveToFirestore(['calendario_config', 'main'], newData, false);
-      };
+        const initialCalendario = { month: getCurrentMonthYearStr(), grid: {} };
+        const initialDrd = { date: getTodayDateStr(), dayOfWeek: getTodayDayOfWeekStr(), grid: {} };
 
-      const deleteCalendarioTask = async (key, idx) => {
-        if (!user) return;
-        const current = Array.isArray(calendarioData.grid[key]) ? [...calendarioData.grid[key]] : [];
-        current.splice(idx, 1);
-        const newData = { ...calendarioData, grid: { ...calendarioData.grid, [key]: current } };
-        setCalendarioData(newData);
-        await saveToFirestore(['calendario_config', 'main'], newData, false);
-        showToast("Removido do Calendário");
-      };
+        const drdDays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
+        const drdPeriods = ['manha', 'tarde', 'noite'];
+        const drdPeriodLabels = ['MANHÃ', 'TARDE', 'NOITE'];
+        const drdDayLabels = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'];
 
-      const addCalendarioTask = async (key, text) => {
-        if (!user || !text.trim()) return;
-        const currentVal = calendarioData.grid[key];
-        const currentTasks = Array.isArray(currentVal) ? [...currentVal] : (currentVal && typeof currentVal === 'string' ? [{text: currentVal, completed: false}] : []);
-        const updatedTasks = [...currentTasks, { text: text.trim(), completed: false }];
-        const newData = { ...calendarioData, grid: { ...calendarioData.grid, [key]: updatedTasks } };
-        setCalendarioData(newData);
-        await saveToFirestore(['calendario_config', 'main'], newData, false);
-        showToast("Adicionado ao Calendário");
-      };
+        const agendaSemanalHours = Array.from({ length: 19 }, (_, i) => i + 5); 
+        const agendaSemanalDays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
+        const initialAgendaSemanal = { week: getWeekNumber(), grid: {} };
 
-      const sendCalendarioToAgendaSemanal = async (key, taskIndex) => {
-        if (!user) return;
-        const currentTasks = calendarioData.grid[key] || [];
-        const task = currentTasks[taskIndex];
-        
-        try {
-          let dateObj;
-          if (key.includes('-') && key.split('-').length === 3) {
-            const [year, month, day] = key.split('-').map(Number);
-            dateObj = new Date(year, month - 1, day);
-          } else {
-             const dayNum = parseInt(key.replace('day-', ''));
-             const d = new Date();
-             dateObj = new Date(d.getFullYear(), d.getMonth(), dayNum);
-          }
+        const agendaHoursLeft = ['5h.', '6h.', '7h.', '8h.', '9h.', '10h.', '11h.', '12h.', '13h.'];
+        const agendaHoursRight = ['14h.', '15h.', '16h.', '17h.', '18h.', '19h.', '20h.', '21h.', '22h.'];
+        const allAgendaHours = [...agendaHoursLeft, ...agendaHoursRight];
 
-          const dayNamesMap = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
-          const dayOfWeek = dayNamesMap[dateObj.getDay()];
-          
-          const weekKey = `5-${dayOfWeek}`;
-          const newAgendaGrid = { ...agendaSemanalData.grid };
-          const currentWeekTasks = Array.isArray(newAgendaGrid[weekKey]) ? [...newAgendaGrid[weekKey]] : [];
-          newAgendaGrid[weekKey] = [...currentWeekTasks, { text: task.text, completed: false, fromArea: null }];
-          
-          const newAgendaData = { ...agendaSemanalData, grid: newAgendaGrid };
-          setAgendaSemanalData(newAgendaData);
-          await saveToFirestore(['agenda_semanal_config', 'main'], newAgendaData, false);
+        const initialAgenda = { date: getTodayDateStr(), dayOfWeek: getTodayDayOfWeekStr(), tasks: {} };
 
-          showToast(`Copiado para ${dayOfWeek.toUpperCase()} às 5h!`);
-        } catch (e) {
-          showToast("Erro ao copiar para Agenda Semanal", "error");
-        }
-      };
+        const fpaDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+        const dayMap = { 'Dom': 'dom', 'Seg': 'seg', 'Ter': 'ter', 'Qua': 'qua', 'Qui': 'qui', 'Sex': 'sex', 'Sáb': 'sab' };
+        const agendaSemanalDayLabels = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'];
+        const calendarioDayLabels = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'];
 
-      const useWideLayout = ['drd', 'agendaSemanal', 'calendario'].includes(activeTab);
-
-      if (loading) {
-        return (
-          <div className="min-h-screen bg-neutral-100 flex flex-col items-center justify-center">
-            <Loader2 className="w-12 h-12 animate-spin mb-4 text-red-600" />
-            <h2 className="text-2xl font-black italic tracking-tighter uppercase"><span className="text-red-600 mr-1">#</span>NoComando</h2>
-          </div>
-        );
-      }
-
-      return (
-        <div className="min-h-screen flex flex-col font-sans py-4 sm:py-8 px-2 sm:px-6">
-          
-          {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-
-          <nav className="max-w-7xl w-full mx-auto mb-6 flex overflow-x-auto gap-2 px-2 pb-2" style={{ scrollbarWidth: 'none' }}>
-            {[
-              { id: 'dtq', label: 'DTQ', icon: ListTodo },
-              { id: 'ciclo', label: 'Ciclo', icon: LayoutGrid },
-              { id: 'fpa', label: 'FPA', icon: FileText },
-              { id: 'agenda', label: 'Agenda Diária', icon: Clock },
-              { id: 'agendaSemanal', label: 'Agenda Semanal', icon: Calendar },
-              { id: 'calendario', label: 'Agenda Mensal', icon: CalendarRange },
-              { id: 'drd', label: 'DRD', icon: CalendarDays }
-            ].map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-5 py-3 font-black tracking-wider uppercase transition-all duration-200 whitespace-nowrap text-xs sm:text-sm rounded-t-lg ${activeTab === tab.id ? 'bg-white text-black shadow-md border-t-4 border-red-600' : 'bg-neutral-300 text-neutral-500 hover:bg-neutral-100 hover:text-black'}`}>
-                <tab.icon className="w-4 h-4" /> {tab.label}
-              </button>
-            ))}
-          </nav>
-
-          <main className={`flex-1 w-full mx-auto bg-white shadow-2xl ring-1 ring-gray-900/5 p-6 sm:p-12 md:p-16 relative overflow-hidden transition-all duration-300 ${useWideLayout ? 'max-w-7xl' : 'max-w-5xl'}`}>
-            
-            {activeTab === 'dtq' && (
-              <div>
-                <header className="mb-10 border-b-[6px] border-red-600 pb-4 relative flex items-end">
-                  <h1 className="text-[2rem] sm:text-[3.5rem] font-black tracking-tighter text-black leading-none flex items-baseline relative z-10 uppercase italic"><span className="text-red-600 mr-1 leading-none">#</span>NoComando</h1>
-                  <div className="absolute left-0 right-0 bottom-4 flex justify-center pointer-events-none"><h2 className="text-[2.5rem] sm:text-[4rem] font-black italic tracking-tighter text-neutral-100 leading-none">DTQ</h2></div>
-                </header>
-                <form onSubmit={handleAddTask} className="mb-12">
-                  <div className="flex items-center border-b-4 border-black pb-3 focus-within:border-red-600 transition-colors group">
-                    <input type="text" value={newTask} onChange={(e) => setNewTask(e.target.value)} placeholder="Descarregue sua mente agora..." className="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-2xl text-black font-bold uppercase italic" />
-                    <button type="submit" disabled={!newTask.trim()} className="ml-4 p-2 bg-black text-white rounded-full hover:bg-red-600 transition-all"><Plus className="w-8 h-8" /></button>
-                  </div>
-                </form>
-                <div className="border-[3px] border-black grid grid-cols-1 md:grid-cols-2 bg-black gap-[3px]">
-                  {Array.from({ length: Math.max(16, tasks.length + (tasks.length % 2)) }).map((_, i) => {
-                    const task = tasks[i];
-                    return (
-                      <div key={task?.id || i} className={`flex items-start gap-4 bg-white p-5 min-h-[5rem] group transition-all ${task?.completed ? 'bg-neutral-50 opacity-60' : 'hover:bg-neutral-50'}`}>
-                        {task ? (
-                          <>
-                            <button onClick={() => toggleTask(task.id, task.completed)} className="mt-1 flex-shrink-0"><CheckSquare className={`w-7 h-7 ${task.completed ? 'text-black' : 'text-neutral-200'}`} /></button>
-                            <div className="flex-1 pt-1 min-w-0">
-                              <span className={`block text-xl font-bold uppercase italic leading-tight break-words ${task.completed ? 'line-through text-gray-400' : 'text-black'}`}>{task.text}</span>
-                            </div>
-                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">{!task.completed && <button onClick={() => sendToCicloArea4(task)} className="p-2 hover:bg-neutral-100 rounded-lg"><ArrowRight className="w-5 h-5" /></button>}<button onClick={() => deleteTask(task.id)} className="p-2 hover:bg-red-100 rounded-lg text-red-600"><Trash2 className="w-5 h-5" /></button></div>
-                          </>
-                        ) : <div className="w-full h-full border-2 border-dashed border-gray-100 rounded-lg"></div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'fpa' && (() => {
-              const currentFpaDay = fpaData.days?.[activeFpaDay] || getEmptyFpaDay();
-              return (
-                <div>
-                  <header className="mb-12 border-b-[4px] border-red-600 pb-6 flex flex-col md:flex-row justify-between items-center gap-6">
-                     <h1 className="text-[2.5rem] font-black italic tracking-tighter uppercase leading-none"><span className="text-red-600">#</span>NoComando</h1>
-                     <div className="flex flex-col items-center md:items-end">
-                       <h2 className="text-2xl font-black uppercase tracking-tight mb-2 leading-none">Folha de Produtividade <span className="bg-red-600 text-white px-3 py-1 rounded-sm italic">A</span></h2>
-                       <div className="flex items-center gap-4">
-                          <div className="flex items-center font-bold uppercase text-sm leading-none">
-                            <span className="mr-2">Data:</span>
-                            <input 
-                              value={currentFpaDay.date} 
-                              onChange={e => handleFpaChange('date', e.target.value)} 
-                              onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData)} 
-                              className="w-32 border-b-2 border-black outline-none font-black text-center bg-transparent focus:border-red-600 transition-colors" 
-                              placeholder="__/__/____" 
-                            />
-                          </div>
-                       </div>
-                     </div>
-                  </header>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                    <div className="space-y-4">
-                      <BubbleBox title="Foco do Dia:"><AutoResizeTextarea value={currentFpaDay.foco} onChange={e => handleFpaChange('foco', e.target.value)} onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData)} className="w-full text-xl font-bold uppercase italic outline-none min-h-[60px] bg-transparent" placeholder="O que é inegociável hoje?" /></BubbleBox>
-                      <BubbleBox title="Prioridades:">
-                        <div className="space-y-4">
-                          {currentFpaDay.prioridades.map((p, i) => (
-                            <div key={i} className="flex items-start gap-3 group">
-                              <button className="mt-1 flex-shrink-0" onClick={() => { 
-                                const n = [...currentFpaDay.prioridades]; 
-                                n[i].completed = !n[i].completed; 
-                                handleFpaChange('prioridades', n); 
-                                const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentFpaDay, prioridades: n } };
-                                saveToFirestore(['fpa_config', 'main'], { days: newDays }, false); 
-                              }}>{p.completed ? <CheckSquare className="w-6 h-6 text-black" /> : <Square className="w-6 h-6" />}</button>
-                              <span className="font-black text-lg mt-0.5">{i+1}.</span>
-                              <div className="flex-1 pt-1 min-w-0">
-                                <span className={`block font-bold uppercase italic leading-tight text-base break-words ${p.completed ? 'line-through text-gray-300' : 'text-black'}`}>{p.text || " "}</span>
-                              </div>
-                              {p.text && (
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mt-1"><button onClick={() => sendFpaToAgenda('prioridades', i)} title="Enviar para Agenda (5h.)" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><Clock className="w-4 h-4" /></button><button onClick={() => returnFpaToCiclo('prioridades', i)} title={`Devolver para Ciclo`} className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><LayoutGrid className="w-4 h-4" /></button></div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </BubbleBox>
-                      <BubbleBox title="Extras:">
-                         <div className="space-y-4">
-                          {currentFpaDay.extras.map((p, i) => (
-                            <div key={i} className="flex items-start gap-3 group">
-                              <button className="mt-1 flex-shrink-0" onClick={() => { 
-                                const n = [...currentFpaDay.extras]; 
-                                n[i].completed = !n[i].completed; 
-                                handleFpaChange('extras', n); 
-                                const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentFpaDay, extras: n } };
-                                saveToFirestore(['fpa_config', 'main'], { days: newDays }, false); 
-                              }}>{p.completed ? <CheckSquare className="w-6 h-6 text-black" /> : <Square className="w-6 h-6" />}</button>
-                              <div className="flex-1 pt-1 min-w-0">
-                                <span className={`block font-bold uppercase italic leading-tight text-base break-words ${p.completed ? 'line-through text-gray-300' : 'text-black'}`}>{p.text || " "}</span>
-                              </div>
-                              {p.text && (
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mt-1"><button onClick={() => sendFpaToAgenda('extras', i)} title="Enviar para Agenda (5h.)" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><Clock className="w-4 h-4" /></button><button onClick={() => returnFpaToCiclo('extras', i)} title={`Devolver para Ciclo`} className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><LayoutGrid className="w-4 h-4" /></button></div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </BubbleBox>
-                    </div>
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center bg-black text-white p-6 rounded-2xl mb-8 border-[1px] border-neutral-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <div className="flex flex-col"><span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 mb-1 leading-none">Como foi o dia?</span><span className="text-xl font-black italic uppercase leading-none">Nota de 0 a 10</span></div>
-                        <div className="flex items-center justify-center"><input value={currentFpaDay.nota} onChange={e => handleFpaChange('nota', e.target.value)} onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData)} className="w-16 h-16 bg-white text-black rounded-xl text-3xl font-black text-center outline-none border-4 border-red-600 focus:ring-4 focus:ring-red-600/20 transition-all" maxLength={2} /></div>
-                      </div>
-                      <BubbleBox title="O que eu aprendi hoje?" innerClassName="bg-neutral-50"><AutoResizeTextarea value={currentFpaDay.aprendizado} onChange={e => handleFpaChange('aprendizado', e.target.value)} onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData)} className="w-full min-h-[150px] bg-transparent outline-none font-medium text-lg leading-relaxed" placeholder="Reflexões do dia..." /></BubbleBox>
-                      <BubbleBox title="Gratidão por:">
-                        {[1, 2, 3].map(n => (
-                          <div key={n} className="flex items-start gap-3 mb-3">
-                            <span className="font-black text-red-600 mt-1">{n}.</span>
-                            <AutoResizeTextarea 
-                              value={currentFpaDay[`gratidao${n}`] || ''} 
-                              onChange={e => handleFpaChange(`gratidao${n}`, e.target.value)} 
-                              onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData)} 
-                              className="flex-1 border-b border-black outline-none font-bold italic bg-transparent focus:border-red-600 transition-colors leading-tight" 
-                            />
-                          </div>
-                        ))}
-                      </BubbleBox>
-                    </div>
-                  </div>
-                  <div className="flex justify-center gap-3 mt-8 border-t pt-6 border-neutral-100">
-                    {fpaDays.map((d) => (
-                      <button 
-                        key={d} 
-                        onClick={() => { 
-                          setActiveFpaDay(d);
-                          const targetDayData = fpaData.days?.[d] || getEmptyFpaDay();
-                          if (!targetDayData.date || targetDayData.date !== getDateForDayOfWeek(d)) {
-                             const newDate = getDateForDayOfWeek(d);
-                             const newDays = { ...fpaData.days, [d]: { ...targetDayData, date: newDate } };
-                             const newData = { ...fpaData, days: newDays };
-                             setFpaData(newData); 
-                             saveToFirestore(['fpa_config', 'main'], { days: newDays }, false); 
-                          }
-                        }}
-                        className={`px-4 py-2 rounded-full font-black text-xs uppercase transition-all ${activeFpaDay === d ? 'bg-red-600 text-white shadow-lg' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {activeTab === 'agenda' && (
-               <div>
-                  <header className="mb-10 text-center border-b-2 border-black pb-6">
-                    <h2 className="text-4xl font-black uppercase italic tracking-tighter leading-none">Agenda Diária</h2>
-                    <div className="flex justify-center gap-4 mt-4 font-bold text-sm uppercase">
-                      <span>Data:</span>
-                      <input 
-                        value={agendaData.date} 
-                        onChange={e => setAgendaData(p => ({...p, date: e.target.value}))} 
-                        onBlur={() => saveToFirestore(['agenda_config', 'main'], agendaData)} 
-                        className="border-b border-black w-32 text-center bg-transparent focus:border-red-600 outline-none transition-colors" 
-                        placeholder="__/__/____" 
-                      />
-                    </div>
-                    <div className="flex justify-center gap-3 mt-6">
-                      {fpaDays.map((d) => (
-                        <button 
-                          key={d} 
-                          onClick={() => { 
-                            const newDate = getDateForDayOfWeek(d);
-                            const newAgendaData = { ...agendaData, dayOfWeek: d, date: newDate }; 
-                            setAgendaData(newAgendaData); 
-                            saveToFirestore(['agenda_config', 'main'], newAgendaData); 
-                          }}
-                          className={`px-4 py-2 rounded-full font-black text-xs uppercase transition-all ${agendaData.dayOfWeek === d ? 'bg-red-600 text-white shadow-lg' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}
-                        >
-                          {d}
-                        </button>
-                      ))}
-                    </div>
-                  </header>
-                  <div className="grid grid-cols-1 md:grid-cols-2 border-[4px] border-black bg-black gap-[4px] relative">
-                    {allAgendaHours.map(hourStr => {
-                      const hourNum = hourStr.replace('h.', '');
-                      const currentDay = dayMap[agendaData.dayOfWeek || getTodayDayOfWeekStr()];
-                      const syncKey = `${hourNum}-${currentDay}`;
-                      const hourTasks = Array.isArray(agendaSemanalData.grid[syncKey]) ? agendaSemanalData.grid[syncKey] : [];
-                      
-                      return (
-                        <div key={hourStr} className="flex flex-col p-4 bg-white min-h-[80px] group">
-                          <div className="flex items-center gap-2 mb-3 border-b border-neutral-50 pb-1"><span className="font-black text-xl italic text-red-600">{hourStr}</span></div>
-                          <div className="flex flex-col gap-3">
-                             {hourTasks.map((t, idx) => (
-                               <div key={idx} className="group/task flex items-start gap-3 relative">
-                                  <button className="mt-1 flex-shrink-0" onClick={() => toggleAgendaSemanalTask(syncKey, idx)}>{t.completed ? <CheckSquare className="w-5 h-5 text-black" /> : <Square className="w-5 h-5 text-black" />}</button>
-                                  <span className={`flex-1 min-w-0 break-words font-bold text-base uppercase italic leading-tight pt-0.5 ${t.completed ? 'line-through text-neutral-300' : 'text-black'}`}>{t.text}</span>
-                                  <div className="flex items-center gap-1 opacity-0 group-hover/task:opacity-100 transition-opacity mt-1">
-                                     <div className="relative">
-                                        <button onClick={() => setMovingTask({ key: syncKey, index: idx, type: 'daily' })} className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black" title="Escolher Horário"><RefreshCw className="w-4 h-4" /></button>
-                                        {movingTask?.key === syncKey && movingTask?.index === idx && movingTask?.type === 'daily' && (
-                                           <div className="absolute right-0 top-full z-50 mt-2 bg-white border-2 border-black shadow-2xl rounded-lg p-2 grid grid-cols-4 gap-1 w-48">
-                                              {allAgendaHours.map(h => (
-                                                <button key={h} onClick={() => moveAgendaSemanalTaskToHour(syncKey, idx, h.replace('h.', ''))} className="text-[10px] font-black p-1 hover:bg-red-600 hover:text-white border border-neutral-100 rounded">{h}</button>
-                                              ))}
-                                              <button onClick={() => setMovingTask(null)} className="col-span-4 text-[9px] uppercase font-bold text-red-600 mt-1 border-t pt-1">Cancelar</button>
-                                           </div>
-                                        )}
-                                     </div>
-                                     <button onClick={() => returnAgendaSemanalToCiclo(syncKey, idx)} title="Devolver para Ciclo" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><LayoutGrid className="w-4 h-4" /></button>
-                                     <button onClick={() => deleteAgendaSemanalTask(syncKey, idx)} title="Excluir" className="p-1 hover:bg-red-50 rounded text-neutral-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-                                  </div>
-                               </div>
-                             ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-               </div>
-            )}
-
-            {activeTab === 'agendaSemanal' && (
-               <div className="overflow-x-auto">
-                 <header className="mb-8 border-b-4 border-red-600 pb-4 flex justify-between items-end min-w-[900px]">
-                    <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Agenda Semanal</h2>
-                    <input value={agendaSemanalData.week} onChange={e => setAgendaSemanalData(p => ({...p, week: e.target.value}))} onBlur={() => saveToFirestore(['agenda_semanal_config', 'main'], agendaSemanalData)} className="w-32 border-b-2 border-black outline-none font-black text-right bg-transparent focus:border-red-600 transition-colors" placeholder="Semana..." />
-                 </header>
-                 <div className="border-[3px] border-black bg-black min-w-[900px] flex flex-col gap-[2px]">
-                    <div className="flex bg-white">
-                      <div className="w-14 border-r-2 border-black flex-shrink-0 bg-neutral-100 flex items-center justify-center font-black text-[10px]">HORA</div>
-                      {agendaSemanalDayLabels.map(label => (<div key={label} className="flex-1 text-center py-2 font-black uppercase text-[10px] border-r border-neutral-200 last:border-r-0">{label}</div>))}
-                    </div>
-                    {agendaSemanalHours.map(hour => (
-                      <div key={hour} className="flex bg-white min-h-[100px]">
-                        <div className="w-14 border-r-2 border-black flex items-center justify-center bg-neutral-50 flex-shrink-0 font-black text-sm italic">{hour}h</div>
-                        {agendaSemanalDays.map(day => {
-                          const key = `${hour}-${day}`;
-                          const rawVal = agendaSemanalData.grid[key];
-                          const dayTasks = Array.isArray(rawVal) ? rawVal : (rawVal ? [{text: rawVal, completed: false, fromArea: 4}] : []);
-                          return (
-                            <div key={day} className="flex-1 border-r border-neutral-100 last:border-r-0 p-2 flex flex-col gap-2 bg-white">
-                               {dayTasks.map((t, idx) => (
-                                 <div key={idx} className="group flex items-start gap-2 relative">
-                                    <button className="mt-0.5 flex-shrink-0" onClick={() => toggleAgendaSemanalTask(key, idx)}>{t.completed ? <CheckSquare className="w-4 h-4 text-black" /> : <Square className="w-4 h-4 text-black" />}</button>
-                                    <span className={`flex-1 min-w-0 break-words font-bold text-[10px] uppercase italic leading-tight pt-0.5 ${t.completed ? 'line-through text-neutral-300' : 'text-black'}`}>{t.text}</span>
-                                    <div className="hidden group-hover:flex items-center gap-0.5">
-                                      <div className="relative">
-                                        <button onClick={() => setMovingTask({ key, index: idx, type: 'weekly', hour })} className="p-0.5 hover:bg-neutral-100 rounded"><RefreshCw className="w-3 h-3 text-neutral-400 hover:text-black" /></button>
-                                        {movingTask?.key === key && movingTask?.index === idx && movingTask?.type === 'weekly' && (
-                                           <div className="absolute left-0 top-full z-50 mt-1 bg-white border-2 border-black shadow-2xl rounded-lg p-1 grid grid-cols-3 gap-0.5 w-32">
-                                              {agendaSemanalHours.map(h => (<button key={h} onClick={() => moveAgendaSemanalTaskToHour(key, idx, h)} className="text-[8px] font-black p-0.5 hover:bg-red-600 hover:text-white border border-neutral-100 rounded">{h}h</button>))}
-                                              <button onClick={() => setMovingTask(null)} className="col-span-3 text-[7px] uppercase font-bold text-red-600 mt-1 border-t pt-1">Fechar</button>
-                                           </div>
-                                        )}
-                                      </div>
-                                      <button onClick={() => deleteAgendaSemanalTask(key, idx)} className="p-0.5 hover:bg-red-50 rounded"><Trash2 className="w-3 h-3 text-neutral-400 hover:text-red-600" /></button>
-                                    </div>
-                                 </div>
-                               ))}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ))}
-                 </div>
-               </div>
-            )}
-
-            {activeTab === 'ciclo' && (
-              <div>
-                 <header className="mb-10 border-b-4 border-black pb-6 flex justify-between items-end">
-                    <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Ciclo Semanal</h2>
-                    <div className="flex gap-4 font-black uppercase text-xs"><span>Semana:</span><input value={cicloConfig.week} onChange={e => setCicloConfig(p => ({...p, week: e.target.value}))} onBlur={() => saveToFirestore(['ciclo_config', 'main'], cicloConfig)} className="border-b border-black w-12 text-center bg-transparent focus:border-red-600 outline-none transition-colors" /></div>
-                 </header>
-                 <div className="grid grid-cols-1 md:grid-cols-2 border-[4px] border-black bg-black gap-[4px]">
-                    {[1,2,3,4].map(area => (
-                      <div key={area} className="bg-white p-6 min-h-[300px] flex flex-col">
-                         <div className="flex items-center gap-3 border-b-2 border-black pb-2 mb-6"><span className="font-black italic uppercase text-red-600">ÁREA {area}:</span><input value={cicloConfig[`area${area}`] || ''} onChange={e => setCicloConfig(p => ({...p, [`area${area}`]: e.target.value}))} onBlur={() => saveToFirestore(['ciclo_config', 'main'], cicloConfig)} className="flex-1 font-black uppercase outline-none bg-transparent" placeholder="Nome da Área..." /></div>
-                         <div className="flex-1 space-y-3">
-                            {cicloTasks.filter(t => t.area === area).map(t => (
-                              <div key={t.id} className="flex items-start gap-3 group">
-                                 <button className="mt-1 flex-shrink-0" onClick={async () => await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', t.id), { completed: !t.completed })}>{t.completed ? <CheckSquare className="w-5 h-5 text-black" /> : <Square className="w-5 h-5" />}</button>
-                                 <span className={`flex-1 min-w-0 break-words font-bold text-sm uppercase pt-0.5 ${t.completed ? 'line-through text-neutral-300' : 'text-black'}`}>{t.text}</span>
-                                 
-                                 <div className="flex items-center gap-1 transition-opacity mt-1 opacity-0 group-hover:opacity-100">
-                                   <button onClick={() => cycleTaskArea(t)} title="Trocar Área" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black transition-colors"><RefreshCw className="w-4 h-4" /></button>
-                                   <button onClick={() => sendCicloToFpaPrioridades(t)} title="Enviar para FPA (Prioridades)" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-red-600 transition-colors"><Star className="w-4 h-4" /></button>
-                                   <button onClick={() => sendCicloToFpaExtras(t)} title="Enviar para FPA (Extras)" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black transition-colors"><FileUp className="w-4 h-4" /></button>
-                                   <button onClick={() => returnTaskToDtq(t)} title="Devolver para DTQ" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black transition-colors"><ArrowLeft className="w-4 h-4" /></button>
-                                   <button onClick={async () => await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', t.id))} className="p-1 hover:bg-red-50 rounded text-neutral-400 hover:text-red-600 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                                 </div>
-                              </div>
-                            ))}
-                         </div>
-                      </div>
-                    ))}
-                 </div>
-              </div>
-            )}
-
-            {activeTab === 'drd' && (
-              <div className="overflow-x-auto">
-                <header className="mb-8 border-b-4 border-red-600 pb-4 flex justify-between items-end min-w-[900px]"><h2 className="text-5xl font-black uppercase italic tracking-tighter leading-none">DRD</h2><div className="font-black text-sm uppercase opacity-40 leading-none">Visão Simplificada</div></header>
-                <div className="border-[3px] border-black bg-black min-w-[900px] flex flex-col gap-[3px]"><div className="flex bg-white"><div className="w-12 border-r-2 border-black flex-shrink-0 bg-neutral-100"></div>{drdDayLabels.map(day => (<div key={day} className="flex-1 text-center py-3 font-black uppercase text-sm border-r border-neutral-200 last:border-r-0">{day}</div>))}</div>{drdPeriods.map((period, pIdx) => (<div key={period} className="flex bg-white"><div className="w-12 border-r-2 border-black flex items-center justify-center bg-neutral-50 flex-shrink-0"><span className="-rotate-90 font-black text-xs uppercase tracking-widest">{drdPeriodLabels[pIdx]}</span></div>{drdDays.map(day => (<div key={day} className="flex-1 min-h-[160px] border-r border-neutral-100 last:border-r-0 p-2"><textarea value={drdData.grid[`${period}-${day}`] || ''} onChange={e => setDrdData(p => ({ ...p, grid: { ...p.grid, [`${period}-${day}`]: e.target.value } }))} onBlur={() => saveToFirestore(['drd_config', 'main'], drdData)} className="w-full h-full bg-transparent outline-none resize-none font-medium text-sm leading-tight" placeholder="..." /></div>))}</div>))}</div>
-              </div>
-            )}
-
-            {activeTab === 'calendario' && (() => {
-              const monthInfo = getMonthInfo(calendarioData.month);
-              let offset = 0, daysInMonth = 31;
-              if (monthInfo) { daysInMonth = new Date(monthInfo.year, monthInfo.month + 1, 0).getDate(); offset = new Date(monthInfo.year, monthInfo.month, 1).getDay(); offset = offset === 0 ? 6 : offset - 1; }
-              const totalRows = Math.max(5, Math.ceil((offset + daysInMonth) / 7));
-              return (
-                <div className="overflow-x-auto">
-                  <header className="mb-8 border-b-4 border-black pb-4 flex justify-between items-end min-w-[900px]"><h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Agenda Mensal</h2><input value={calendarioData.month} onChange={e => setCalendarioData(p => ({...p, month: e.target.value}))} onBlur={() => saveToFirestore(['calendario_config', 'main'], calendarioData)} placeholder="Mês e Ano..." className="w-48 border-b-2 border-red-600 outline-none font-black text-right uppercase bg-transparent focus:border-black transition-colors" /></header>
-                  <div className="border-[3px] border-black bg-black min-w-[900px] flex flex-col gap-[2px]"><div className="flex bg-white">{calendarioDayLabels.map(label => (<div key={label} className="flex-1 text-center py-2 font-black uppercase text-xs border-r border-black last:border-r-0">{label}</div>))}</div>{Array.from({ length: totalRows }).map((_, r) => (<div key={r} className="flex bg-white min-h-[140px]">{[0,1,2,3,4,5,6].map(c => { const dayNum = (r * 7 + c) - offset + 1; const isDay = dayNum >= 1 && dayNum <= daysInMonth; const key = monthInfo ? `${monthInfo.year}-${monthInfo.month + 1}-${dayNum}` : `day-${dayNum}`; const rawVal = calendarioData.grid[key]; const dayTasks = Array.isArray(rawVal) ? rawVal : (rawVal && typeof rawVal === 'string' ? [{text: rawVal, completed: false}] : []); return (<div key={c} className={`flex-1 border-r border-neutral-100 last:border-r-0 p-2 flex flex-col ${!isDay ? 'bg-neutral-50' : ''}`}>{isDay && <span className="font-black text-[10px] mb-1 opacity-40 uppercase">DIA {dayNum}</span>}{isDay && (<div className="flex flex-col gap-1 flex-1 overflow-y-auto" style={{scrollbarWidth: 'none'}}>{dayTasks.map((t, idx) => (<div key={idx} className="group flex items-start gap-1"><button className="mt-0.5 flex-shrink-0" onClick={() => toggleCalendarioTask(key, idx)}>{t.completed ? <CheckSquare className="w-3 h-3 text-black" /> : <Square className="w-3 h-3 text-black" />}</button><span className={`flex-1 min-w-0 break-words font-bold text-[9px] uppercase italic leading-tight pt-0.5 ${t.completed ? 'line-through text-neutral-300' : 'text-black'}`}>{t.text}</span><div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">{!t.completed && (<button onClick={() => sendCalendarioToAgendaSemanal(key, idx)} className="p-0.5 text-neutral-400 hover:text-black hover:bg-neutral-100 rounded" title="Copiar para Agenda Semanal (5h)"><Calendar className="w-3 h-3" /></button>)}<button onClick={() => deleteCalendarioTask(key, idx)} className="p-0.5 text-red-600 hover:bg-red-50 rounded" title="Excluir"><Trash2 className="w-3 h-3" /></button></div></div>))}<div className="mt-auto pt-1 border-t border-dashed border-neutral-200 flex items-center gap-1 opacity-40 hover:opacity-100 focus-within:opacity-100 transition-opacity"><Plus className="w-3 h-3 text-neutral-400" /><input placeholder="Nova..." className="w-full bg-transparent outline-none font-bold text-[9px] uppercase italic placeholder:text-neutral-400" onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value.trim()) { addCalendarioTask(key, e.target.value); e.target.value = ''; } }} /></div></div>)}</div>) })}</div>))}</div>
-                </div>
-              );
-            })()}
-
-          </main>
-
-          <footer className="max-w-7xl w-full mx-auto mt-4 px-4 flex justify-between items-center text-[10px] font-black uppercase opacity-40">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${user ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              {user ? `ONLINE: ${user.uid.substring(0, 8)}...` : 'DESCONECTADO'}
+        // --- COMPONENTES AUXILIARES ---
+        const Toast = ({ message, type, onClose }) => (
+            <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl animate-in slide-in-from-right-full duration-300 ${type === 'error' ? 'bg-red-600 text-white' : 'bg-black text-white'}`}>
+                {type === 'error' ? <AlertCircle className="w-5 h-5" /> : <Cloud className="w-5 h-5 text-green-400" />}
+                <span className="font-bold text-sm uppercase tracking-wider">{message}</span>
+                <button onClick={onClose} className="ml-2 hover:opacity-70 transition-opacity"><X className="w-4 h-4" /></button>
             </div>
-            <div>PLANNER #NOCOMANDO V2.1</div>
-          </footer>
-        </div>
-      );
-    }
+        );
 
-    // Inicializa e renderiza o aplicativo na tela
-    const root = createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
+        const BubbleBox = ({ title, children, className = "", innerClassName = "" }) => (
+            <div className={`relative mb-6 ${className}`}>
+                <div className="font-bold italic text-xl mb-1 ml-2 tracking-tight uppercase leading-none">{title}</div>
+                <div className={`border-[2px] border-black rounded-xl p-5 relative bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${innerClassName}`}>
+                    <div className="absolute -top-[11px] left-8 w-5 h-5 border-t-[2px] border-l-[2px] border-black bg-white transform rotate-45"></div>
+                    {children}
+                </div>
+            </div>
+        );
+
+        const AutoResizeTextarea = ({ value, onChange, onBlur, className, placeholder, rows = 1 }) => {
+            const textareaRef = useRef(null);
+            useEffect(() => {
+                if (textareaRef.current) {
+                    textareaRef.current.style.height = 'auto';
+                    textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+                }
+            }, [value]);
+            return (
+                <textarea
+                    ref={textareaRef} value={value} onChange={onChange} onBlur={onBlur}
+                    className={`${className} overflow-hidden resize-none`}
+                    placeholder={placeholder} rows={rows}
+                />
+            );
+        };
+
+        const getMonthInfo = (monthStr) => {
+            if (!monthStr) return null;
+            const str = monthStr.toLowerCase().trim();
+            const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+            const shortMonths = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            let monthIdx = -1;
+            for (let i = 0; i < 12; i++) {
+                if (str.includes(months[i]) || str.includes(shortMonths[i])) { monthIdx = i; break; }
+            }
+            if (monthIdx === -1) return null;
+            const yearMatch = str.match(/\d{4}/);
+            const year = yearMatch ? parseInt(yearMatch[0], 10) : new Date().getFullYear();
+            return { month: monthIdx, year };
+        };
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(false); // Mudança para não bloquear a tela no Vercel
+            const [toast, setToast] = useState(null);
+            const [activeTab, setActiveTab] = useState('dtq');
+            const [tasks, setTasks] = useState([]);
+            const [newTask, setNewTask] = useState('');
+            const [calendarioData, setCalendarioData] = useState(initialCalendario);
+            const [cicloTasks, setCicloTasks] = useState([]);
+            const [cicloConfig, setCicloConfig] = useState({ week: getWeekNumber(), dateStart: '', dateEnd: '', area1: '', area2: '', area3: '', area4: '' });
+            const [agendaSemanalData, setAgendaSemanalData] = useState(initialAgendaSemanal);
+            const [activeFpaDay, setActiveFpaDay] = useState(getTodayDayOfWeekStr());
+            const [fpaData, setFpaData] = useState(initialFpa);
+            const [agendaData, setAgendaData] = useState(initialAgenda);
+            const [drdData, setDrdData] = useState(initialDrd);
+            const [movingTask, setMovingTask] = useState(null); 
+
+            const showToast = useCallback((message, type = 'success') => {
+                setToast({ message, type });
+                setTimeout(() => setToast(null), 4000);
+            }, []);
+
+            // Desativar autenticação rigorosa na Vercel para não crashear
+            useEffect(() => {
+                if (!auth) {
+                    setLoading(false);
+                    return;
+                }
+                const initAuth = async () => {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (error) {
+                        console.warn("Executando sem Cloud");
+                    }
+                };
+                initAuth();
+                const unsubscribe = onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); });
+                return () => unsubscribe();
+            }, []);
+
+            useEffect(() => {
+                if (!user || !db) return;
+                const unsubscribers = [];
+                unsubscribers.push(onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks'), (snap) => {
+                    const t = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    t.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+                    setTasks(t);
+                }));
+                unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'calendario_config', 'main'), (snap) => {
+                    if (snap.exists()) setCalendarioData(prev => ({ ...prev, ...snap.data() }));
+                }));
+                unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_config', 'main'), (snap) => {
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        setCicloConfig(prev => ({ ...prev, ...data, week: data.week || getWeekNumber() }));
+                    }
+                }));
+                unsubscribers.push(onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks'), (snap) => {
+                    const t = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    t.sort((a, b) => a.createdAt - b.createdAt);
+                    setCicloTasks(t);
+                }));
+                unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'agenda_semanal_config', 'main'), (snap) => {
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        setAgendaSemanalData(prev => ({ ...prev, ...data, week: data.week || getWeekNumber() }));
+                    }
+                }));
+                unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'fpa_config', 'main'), (snap) => {
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        if (data.days) {
+                            const d = data.days;
+                            fpaDays.forEach(day => {
+                                if (!d[day]) d[day] = getEmptyFpaDay();
+                                if (!d[day].date) d[day].date = getDateForDayOfWeek(day);
+                            });
+                            setFpaData({ ...data, days: d });
+                        }
+                    }
+                }));
+                unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'agenda_config', 'main'), (snap) => {
+                    if (snap.exists()) setAgendaData(prev => ({ ...prev, ...snap.data(), date: snap.data().date || getTodayDateStr() }));
+                }));
+                unsubscribers.push(onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'drd_config', 'main'), (snap) => {
+                    if (snap.exists()) setDrdData(prev => ({ ...prev, ...snap.data() }));
+                }));
+                return () => unsubscribers.forEach(unsub => unsub());
+            }, [user]);
+
+            const saveToFirestore = async (path, data, showMsg = true) => {
+                if (!user || !db) return;
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, ...path);
+                    await setDoc(docRef, data, { merge: true });
+                    if (showMsg) showToast("Alterações salvas!");
+                } catch (e) { showToast("Erro ao salvar", "error"); }
+            };
+
+            const handleAddTask = async (e) => {
+                e.preventDefault();
+                if (!newTask.trim()) return;
+                if (!user || !db) {
+                    // Modo local caso Firebase não esteja configurado
+                    setTasks([...tasks, { id: Date.now(), text: newTask.trim(), completed: false }]);
+                    setNewTask('');
+                    showToast("Salvo localmente. Conecte Nuvem para Sincronizar.", "error");
+                    return;
+                }
+                try {
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks'), { text: newTask.trim(), completed: false, createdAt: Date.now() });
+                    setNewTask('');
+                } catch (e) { showToast("Erro ao adicionar", "error"); }
+            };
+
+            const toggleTask = async (id, status) => {
+                if (!user || !db) { setTasks(tasks.map(t => t.id === id ? { ...t, completed: !status } : t)); return; }
+                try { await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks', id), { completed: !status }); } catch (e) { showToast("Erro", "error"); }
+            };
+
+            const deleteTask = async (id) => {
+                if (!user || !db) { setTasks(tasks.filter(t => t.id !== id)); return; }
+                try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks', id)); } catch (e) { showToast("Erro", "error"); }
+            };
+
+            const sendToCicloArea4 = async (task) => {
+                if (!user || !db) return showToast("Nuvem Desconectada", "error");
+                try {
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks'), { text: task.text, area: 4, completed: false, createdAt: Date.now() });
+                    await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks', task.id));
+                    showToast("Enviado para o Ciclo (Área 4)!");
+                } catch (e) { showToast("Erro ao mover", "error"); }
+            };
+
+            const cycleTaskArea = async (task) => {
+                if (!user || !db) return;
+                const nextArea = task.area === 4 ? 1 : task.area + 1;
+                try {
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', task.id), { area: nextArea });
+                    showToast(`Movido para Área ${nextArea}`);
+                } catch (e) { showToast("Erro", "error"); }
+            };
+
+            const returnTaskToDtq = async (task) => {
+                if (!user || !db) return;
+                try {
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'dtq_tasks'), { text: task.text, completed: false, createdAt: Date.now() });
+                    await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', task.id));
+                    showToast("Devolvido para o DTQ!");
+                } catch (e) { showToast("Erro ao devolver", "error"); }
+            };
+
+            const sendCicloToFpaExtras = async (task) => {
+                const currentDayData = fpaData.days[activeFpaDay];
+                const newExtras = [...currentDayData.extras];
+                const emptyIdx = newExtras.findIndex(item => item.text.trim() === '');
+                if (emptyIdx === -1) { showToast(`FPA de ${activeFpaDay} cheia!`, "error"); return; }
+                newExtras[emptyIdx] = { text: task.text, completed: false, fromArea: task.area };
+                const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentDayData, extras: newExtras } };
+                setFpaData({ ...fpaData, days: newDays });
+                if (user && db) {
+                    await saveToFirestore(['fpa_config', 'main'], { days: newDays });
+                    await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', task.id));
+                }
+                showToast(`Promovido para FPA!`);
+            };
+
+            const sendCicloToFpaPrioridades = async (task) => {
+                const currentDayData = fpaData.days[activeFpaDay];
+                const newPrioridades = [...currentDayData.prioridades];
+                const emptyIdx = newPrioridades.findIndex(item => item.text.trim() === '');
+                if (emptyIdx === -1) { showToast(`FPA de ${activeFpaDay} cheia!`, "error"); return; }
+                newPrioridades[emptyIdx] = { text: task.text, completed: false, fromArea: task.area };
+                const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentDayData, prioridades: newPrioridades } };
+                setFpaData({ ...fpaData, days: newDays });
+                if (user && db) {
+                    await saveToFirestore(['fpa_config', 'main'], { days: newDays });
+                    await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', task.id));
+                }
+                showToast(`Promovido para FPA!`);
+            };
+
+            const sendFpaToAgenda = async (listName, index) => {
+                const currentDayData = fpaData.days[activeFpaDay];
+                const item = currentDayData[listName][index];
+                if (!item.text.trim()) return;
+                const weekDay = dayMap[activeFpaDay] || 'seg';
+                const weekKey = `5-${weekDay}`;
+                
+                const newAgendaSemanalGrid = { ...agendaSemanalData.grid };
+                const currentWeekTasks = Array.isArray(newAgendaSemanalGrid[weekKey]) ? [...newAgendaSemanalGrid[weekKey]] : [];
+                newAgendaSemanalGrid[weekKey] = [...currentWeekTasks, { text: item.text, completed: false, fromArea: item.fromArea }];
+                setAgendaSemanalData({ ...agendaSemanalData, grid: newAgendaSemanalGrid });
+                
+                const newList = [...currentDayData[listName]];
+                newList[index] = { text: '', completed: false, fromArea: null };
+                const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentDayData, [listName]: newList } };
+                setFpaData(prev => ({ ...prev, days: newDays }));
+                
+                if (user && db) {
+                    await saveToFirestore(['agenda_semanal_config', 'main'], { ...agendaSemanalData, grid: newAgendaSemanalGrid }, false);
+                    await saveToFirestore(['fpa_config', 'main'], { days: newDays });
+                }
+                showToast("Enviado para Agenda!");
+            };
+
+            const returnFpaToCiclo = async (listName, index) => {
+                const currentDayData = fpaData.days[activeFpaDay];
+                const item = currentDayData[listName][index];
+                if (!item.text.trim()) return;
+                const targetArea = item.fromArea || 4;
+                
+                const newList = [...currentDayData[listName]];
+                newList[index] = { text: '', completed: false, fromArea: null };
+                const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentDayData, [listName]: newList } };
+                setFpaData(prev => ({ ...prev, days: newDays }));
+                
+                if (user && db) {
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks'), { text: item.text, area: targetArea, completed: false, createdAt: Date.now() });
+                    await saveToFirestore(['fpa_config', 'main'], { days: newDays });
+                }
+                showToast(`Devolvido para Ciclo`);
+            };
+
+            const handleFpaChange = (field, value) => {
+                const currentDayData = fpaData.days[activeFpaDay];
+                const newDays = { ...fpaData.days, [activeFpaDay]: { ...currentDayData, [field]: value } };
+                setFpaData(prev => ({ ...prev, days: newDays }));
+            };
+
+            const returnAgendaSemanalToCiclo = async (key, index) => {
+                const currentTasks = [...(agendaSemanalData.grid[key] || [])];
+                const task = currentTasks.splice(index, 1)[0];
+                const targetArea = task.fromArea || 4;
+                const newAgendaData = { ...agendaSemanalData, grid: { ...agendaSemanalData.grid, [key]: currentTasks } };
+                setAgendaSemanalData(newAgendaData);
+                
+                if (user && db) {
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks'), { text: task.text, area: targetArea, completed: false, createdAt: Date.now() });
+                    await saveToFirestore(['agenda_semanal_config', 'main'], newAgendaData, false);
+                }
+                showToast(`Devolvido para Ciclo`);
+            };
+
+            const toggleAgendaSemanalTask = async (key, idx) => {
+                const current = [...(agendaSemanalData.grid[key] || [])];
+                current[idx].completed = !current[idx].completed;
+                const newData = { ...agendaSemanalData, grid: { ...agendaSemanalData.grid, [key]: current } };
+                setAgendaSemanalData(newData);
+                if (user && db) await saveToFirestore(['agenda_semanal_config', 'main'], newData, false);
+            };
+
+            const deleteAgendaSemanalTask = async (key, idx) => {
+                const current = [...(agendaSemanalData.grid[key] || [])];
+                current.splice(idx, 1);
+                const newData = { ...agendaSemanalData, grid: { ...agendaSemanalData.grid, [key]: current } };
+                setAgendaSemanalData(newData);
+                if (user && db) await saveToFirestore(['agenda_semanal_config', 'main'], newData, false);
+                showToast("Removido da semana");
+            };
+
+            const moveAgendaSemanalTaskToHour = async (key, taskIndex, targetHour) => {
+                const day = key.split('-')[1];
+                const nextKey = `${targetHour}-${day}`;
+                const currentSource = [...(agendaSemanalData.grid[key] || [])];
+                const task = currentSource.splice(taskIndex, 1)[0];
+                const currentTarget = Array.isArray(agendaSemanalData.grid[nextKey]) ? [...agendaSemanalData.grid[nextKey]] : [];
+                const newData = { ...agendaSemanalData, grid: { ...agendaSemanalData.grid, [key]: currentSource, [nextKey]: [...currentTarget, task] } };
+                setAgendaSemanalData(newData);
+                setMovingTask(null);
+                if (user && db) await saveToFirestore(['agenda_semanal_config', 'main'], newData, false);
+                showToast(`Movido para ${targetHour}h`);
+            };
+
+            const toggleCalendarioTask = async (key, idx) => {
+                const current = Array.isArray(calendarioData.grid[key]) ? [...calendarioData.grid[key]] : [];
+                current[idx].completed = !current[idx].completed;
+                const newData = { ...calendarioData, grid: { ...calendarioData.grid, [key]: current } };
+                setCalendarioData(newData);
+                if (user && db) await saveToFirestore(['calendario_config', 'main'], newData, false);
+            };
+
+            const deleteCalendarioTask = async (key, idx) => {
+                const current = Array.isArray(calendarioData.grid[key]) ? [...calendarioData.grid[key]] : [];
+                current.splice(idx, 1);
+                const newData = { ...calendarioData, grid: { ...calendarioData.grid, [key]: current } };
+                setCalendarioData(newData);
+                if (user && db) await saveToFirestore(['calendario_config', 'main'], newData, false);
+            };
+
+            const addCalendarioTask = async (key, text) => {
+                if (!text.trim()) return;
+                const currentVal = calendarioData.grid[key];
+                const currentTasks = Array.isArray(currentVal) ? [...currentVal] : (currentVal && typeof currentVal === 'string' ? [{text: currentVal, completed: false}] : []);
+                const updatedTasks = [...currentTasks, { text: text.trim(), completed: false }];
+                const newData = { ...calendarioData, grid: { ...calendarioData.grid, [key]: updatedTasks } };
+                setCalendarioData(newData);
+                if (user && db) await saveToFirestore(['calendario_config', 'main'], newData, false);
+            };
+
+            const sendCalendarioToAgendaSemanal = async (key, taskIndex) => {
+                const currentTasks = calendarioData.grid[key] || [];
+                const task = currentTasks[taskIndex];
+                try {
+                    let dateObj;
+                    if (key.includes('-') && key.split('-').length === 3) {
+                        const [year, month, day] = key.split('-').map(Number);
+                        dateObj = new Date(year, month - 1, day);
+                    } else {
+                        const dayNum = parseInt(key.replace('day-', ''));
+                        const d = new Date();
+                        dateObj = new Date(d.getFullYear(), d.getMonth(), dayNum);
+                    }
+                    const dayNamesMap = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+                    const dayOfWeek = dayNamesMap[dateObj.getDay()];
+                    const weekKey = `5-${dayOfWeek}`;
+                    const newAgendaGrid = { ...agendaSemanalData.grid };
+                    const currentWeekTasks = Array.isArray(newAgendaGrid[weekKey]) ? [...newAgendaGrid[weekKey]] : [];
+                    newAgendaGrid[weekKey] = [...currentWeekTasks, { text: task.text, completed: false, fromArea: null }];
+                    const newAgendaData = { ...agendaSemanalData, grid: newAgendaGrid };
+                    setAgendaSemanalData(newAgendaData);
+                    if (user && db) await saveToFirestore(['agenda_semanal_config', 'main'], newAgendaData, false);
+                    showToast(`Copiado para ${dayOfWeek.toUpperCase()} às 5h!`);
+                } catch (e) { showToast("Erro ao copiar", "error"); }
+            };
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-neutral-100 flex flex-col items-center justify-center">
+                        <Loader2 className="w-12 h-12 animate-spin mb-4" />
+                        <h2 className="text-2xl font-black italic tracking-tighter uppercase">#NoComando</h2>
+                    </div>
+                );
+            }
+
+            const useWideLayout = ['drd', 'agendaSemanal', 'calendario'].includes(activeTab);
+
+            return (
+                <div className="min-h-screen bg-neutral-200 flex flex-col font-sans py-4 sm:py-8 px-2 sm:px-6">
+                    {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+                    <nav className="max-w-7xl w-full mx-auto mb-6 flex overflow-x-auto no-scrollbar gap-2 px-2 pb-2">
+                        {[
+                            { id: 'dtq', label: 'DTQ', icon: ListTodo },
+                            { id: 'ciclo', label: 'Ciclo', icon: LayoutGrid },
+                            { id: 'fpa', label: 'FPA', icon: FileText },
+                            { id: 'agenda', label: 'Diária', icon: Clock },
+                            { id: 'agendaSemanal', label: 'Semanal', icon: Calendar },
+                            { id: 'calendario', label: 'Mensal', icon: CalendarRange },
+                            { id: 'drd', label: 'DRD', icon: CalendarDays }
+                        ].map(tab => {
+                            const TabIcon = tab.icon;
+                            return (
+                                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-5 py-3 font-black tracking-wider uppercase transition-all duration-200 whitespace-nowrap text-xs sm:text-sm rounded-t-lg ${activeTab === tab.id ? 'bg-white text-black shadow-md border-t-4 border-red-600' : 'bg-neutral-300 text-neutral-500 hover:bg-neutral-100 hover:text-black'}`}>
+                                    <TabIcon className="w-4 h-4" /> {tab.label}
+                                </button>
+                            );
+                        })}
+                    </nav>
+
+                    <main className={`flex-1 w-full mx-auto bg-white shadow-2xl ring-1 ring-gray-900/5 p-6 sm:p-12 md:p-16 relative overflow-hidden transition-all duration-300 ${useWideLayout ? 'max-w-7xl' : 'max-w-5xl'}`}>
+                        
+                        {/* DTQ */}
+                        {activeTab === 'dtq' && (
+                            <div className="animate-in fade-in duration-500">
+                                <header className="mb-10 border-b-[6px] border-red-600 pb-4 relative flex items-end">
+                                    <h1 className="text-[2rem] sm:text-[3.5rem] font-black tracking-tighter text-black leading-none flex items-baseline relative z-10 uppercase italic"><span className="text-red-600 mr-1 leading-none">#</span>NoComando</h1>
+                                    <div className="absolute left-0 right-0 bottom-4 flex justify-center pointer-events-none"><h2 className="text-[2.5rem] sm:text-[4rem] font-black italic tracking-tighter text-neutral-100 leading-none">DTQ</h2></div>
+                                </header>
+                                <form onSubmit={handleAddTask} className="mb-12">
+                                    <div className="flex items-center border-b-4 border-black pb-3 focus-within:border-red-600 transition-colors group">
+                                        <input type="text" value={newTask} onChange={(e) => setNewTask(e.target.value)} placeholder="Descarregue sua mente agora..." className="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-2xl text-black font-bold uppercase italic" />
+                                        <button type="submit" disabled={!newTask.trim()} className="ml-4 p-2 bg-black text-white rounded-full hover:bg-red-600 transition-all"><Plus className="w-8 h-8" /></button>
+                                    </div>
+                                </form>
+                                <div className="border-[3px] border-black grid grid-cols-1 md:grid-cols-2 bg-black gap-[3px]">
+                                    {Array.from({ length: Math.max(16, tasks.length + (tasks.length % 2)) }).map((_, i) => {
+                                        const task = tasks[i];
+                                        return (
+                                            <div key={task?.id || i} className={`flex items-start gap-4 bg-white p-5 min-h-[5rem] group transition-all ${task?.completed ? 'bg-neutral-50 opacity-60' : 'hover:bg-neutral-50'}`}>
+                                                {task ? (
+                                                    <>
+                                                        <button onClick={() => toggleTask(task.id, task.completed)} className="mt-1 flex-shrink-0">
+                                                            {task.completed ? <SquareCheck className="w-7 h-7 text-black" /> : <Square className="w-7 h-7 text-neutral-200" />}
+                                                        </button>
+                                                        <div className="flex-1 pt-1 min-w-0">
+                                                            <span className={`block text-xl font-bold uppercase italic leading-tight break-words ${task.completed ? 'line-through text-gray-400' : 'text-black'}`}>{task.text}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                                            {!task.completed && <button onClick={() => sendToCicloArea4(task)} className="p-2 hover:bg-neutral-100 rounded-lg"><ArrowRight className="w-5 h-5" /></button>}
+                                                            <button onClick={() => deleteTask(task.id)} className="p-2 hover:bg-red-100 rounded-lg text-red-600"><Trash2 className="w-5 h-5" /></button>
+                                                        </div>
+                                                    </>
+                                                ) : <div className="w-full h-full border-2 border-dashed border-gray-100 rounded-lg"></div>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* FPA */}
+                        {activeTab === 'fpa' && (() => {
+                            const currentFpaDay = fpaData.days?.[activeFpaDay] || getEmptyFpaDay();
+                            return (
+                                <div className="animate-in fade-in duration-500">
+                                    <header className="mb-12 border-b-[4px] border-red-600 pb-6 flex flex-col md:flex-row justify-between items-center gap-6">
+                                        <h1 className="text-[2.5rem] font-black italic tracking-tighter uppercase leading-none"><span className="text-red-600">#</span>NoComando</h1>
+                                        <div className="flex flex-col items-center md:items-end">
+                                            <h2 className="text-2xl font-black uppercase tracking-tight mb-2 leading-none">Folha de Produtividade <span className="bg-red-600 text-white px-3 py-1 rounded-sm italic">A</span></h2>
+                                            <div className="flex items-center font-bold uppercase text-sm leading-none">
+                                                <span className="mr-2">Data:</span>
+                                                <input value={currentFpaDay.date} onChange={e => handleFpaChange('date', e.target.value)} onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData)} className="w-32 border-b-2 border-black outline-none font-black text-center bg-transparent focus:border-red-600 transition-colors" placeholder="__/__/____" />
+                                            </div>
+                                        </div>
+                                    </header>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                        <div className="space-y-4">
+                                            <BubbleBox title="Foco do Dia:"><AutoResizeTextarea value={currentFpaDay.foco} onChange={e => handleFpaChange('foco', e.target.value)} onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData)} className="w-full text-xl font-bold uppercase italic outline-none min-h-[60px] bg-transparent" placeholder="O que é inegociável hoje?" /></BubbleBox>
+                                            <BubbleBox title="Prioridades:">
+                                                <div className="space-y-4">
+                                                    {currentFpaDay.prioridades.map((p, i) => (
+                                                        <div key={i} className="flex items-start gap-3 group/fpaprio">
+                                                            <button className="mt-1 flex-shrink-0" onClick={() => { 
+                                                                const n = [...currentFpaDay.prioridades]; 
+                                                                n[i].completed = !n[i].completed; 
+                                                                handleFpaChange('prioridades', n); 
+                                                                saveToFirestore(['fpa_config', 'main'], { days: { ...fpaData.days, [activeFpaDay]: { ...currentFpaDay, prioridades: n } } }, false); 
+                                                            }}>{p.completed ? <SquareCheck className="w-6 h-6 text-black" /> : <Square className="w-6 h-6" />}</button>
+                                                            <span className="font-black text-lg mt-0.5">{i+1}.</span>
+                                                            <div className="flex-1 pt-1 min-w-0">
+                                                                <AutoResizeTextarea value={p.text} onChange={e => {
+                                                                    const n = [...currentFpaDay.prioridades];
+                                                                    n[i].text = e.target.value;
+                                                                    handleFpaChange('prioridades', n);
+                                                                }} onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData, false)} placeholder="..." className={`w-full bg-transparent outline-none font-bold uppercase italic leading-tight text-base break-words ${p.completed ? 'line-through text-gray-300' : 'text-black'}`} />
+                                                            </div>
+                                                            {p.text && (
+                                                                <div className="flex items-center gap-1 opacity-0 group-hover/fpaprio:opacity-100 transition-opacity mt-1">
+                                                                    <button onClick={() => sendFpaToAgenda('prioridades', i)} title="Enviar para Agenda" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><Clock className="w-4 h-4" /></button>
+                                                                    <button onClick={() => returnFpaToCiclo('prioridades', i)} title="Devolver para Ciclo" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><LayoutGrid className="w-4 h-4" /></button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </BubbleBox>
+                                            <BubbleBox title="Extras:">
+                                                <div className="space-y-4">
+                                                    {currentFpaDay.extras.map((p, i) => (
+                                                        <div key={i} className="flex items-start gap-3 group/fpaextra">
+                                                            <button className="mt-1 flex-shrink-0" onClick={() => { 
+                                                                const n = [...currentFpaDay.extras]; n[i].completed = !n[i].completed; handleFpaChange('extras', n); 
+                                                                saveToFirestore(['fpa_config', 'main'], { days: { ...fpaData.days, [activeFpaDay]: { ...currentFpaDay, extras: n } } }, false); 
+                                                            }}>{p.completed ? <SquareCheck className="w-6 h-6 text-black" /> : <Square className="w-6 h-6" />}</button>
+                                                            <div className="flex-1 pt-1 min-w-0">
+                                                                <AutoResizeTextarea value={p.text} onChange={e => { const n = [...currentFpaDay.extras]; n[i].text = e.target.value; handleFpaChange('extras', n); }} onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData, false)} placeholder="..." className={`w-full bg-transparent outline-none font-bold uppercase italic leading-tight text-base break-words ${p.completed ? 'line-through text-gray-300' : 'text-black'}`} />
+                                                            </div>
+                                                            {p.text && (
+                                                                <div className="flex items-center gap-1 opacity-0 group-hover/fpaextra:opacity-100 transition-opacity mt-1">
+                                                                    <button onClick={() => sendFpaToAgenda('extras', i)} className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><Clock className="w-4 h-4" /></button>
+                                                                    <button onClick={() => returnFpaToCiclo('extras', i)} className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><LayoutGrid className="w-4 h-4" /></button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </BubbleBox>
+                                        </div>
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between items-center bg-black text-white p-6 rounded-2xl mb-8 border-[1px] border-neutral-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                                <div className="flex flex-col"><span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 mb-1 leading-none">Como foi o dia?</span><span className="text-xl font-black italic uppercase leading-none">Nota 0 a 10</span></div>
+                                                <div className="flex items-center justify-center"><input value={currentFpaDay.nota} onChange={e => handleFpaChange('nota', e.target.value)} onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData)} className="w-16 h-16 bg-white text-black rounded-xl text-3xl font-black text-center outline-none border-4 border-red-600 focus:ring-4 focus:ring-red-600/20 transition-all" maxLength={2} /></div>
+                                            </div>
+                                            <BubbleBox title="O que aprendi hoje?" innerClassName="bg-neutral-50"><AutoResizeTextarea value={currentFpaDay.aprendizado} onChange={e => handleFpaChange('aprendizado', e.target.value)} onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData)} className="w-full min-h-[150px] bg-transparent outline-none font-medium text-lg leading-relaxed" placeholder="Reflexões..." /></BubbleBox>
+                                            <BubbleBox title="Gratidão por:">
+                                                {[1, 2, 3].map(n => (
+                                                    <div key={n} className="flex items-start gap-3 mb-3">
+                                                        <span className="font-black text-red-600 mt-1">{n}.</span>
+                                                        <AutoResizeTextarea value={currentFpaDay[`gratidao${n}`] || ''} onChange={e => handleFpaChange(`gratidao${n}`, e.target.value)} onBlur={() => saveToFirestore(['fpa_config', 'main'], fpaData)} className="flex-1 border-b border-black outline-none font-bold italic bg-transparent focus:border-red-600 transition-colors leading-tight" />
+                                                    </div>
+                                                ))}
+                                            </BubbleBox>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-center gap-3 mt-8 border-t pt-6 border-neutral-100">
+                                        {fpaDays.map((d) => (
+                                            <button key={d} onClick={() => { 
+                                                setActiveFpaDay(d);
+                                                if (!fpaData.days?.[d]?.date || fpaData.days[d].date !== getDateForDayOfWeek(d)) {
+                                                    const newDays = { ...fpaData.days, [d]: { ...(fpaData.days?.[d] || getEmptyFpaDay()), date: getDateForDayOfWeek(d) } };
+                                                    setFpaData({ ...fpaData, days: newDays }); saveToFirestore(['fpa_config', 'main'], { days: newDays }, false); 
+                                                }
+                                            }} className={`px-4 py-2 rounded-full font-black text-xs uppercase transition-all ${activeFpaDay === d ? 'bg-red-600 text-white shadow-lg' : 'bg-neutral-100 text-neutral-400 hover:bg-neutral-200'}`}>
+                                                {d}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {/* AGENDA DIÁRIA */}
+                        {activeTab === 'agenda' && (
+                            <div className="animate-in fade-in duration-500">
+                                <header className="mb-10 text-center border-b-2 border-black pb-6">
+                                    <h2 className="text-4xl font-black uppercase italic tracking-tighter leading-none">Agenda Diária</h2>
+                                    <div className="flex justify-center gap-4 mt-4 font-bold text-sm uppercase">
+                                        <span>Data:</span>
+                                        <input value={agendaData.date} onChange={e => setAgendaData(p => ({...p, date: e.target.value}))} onBlur={() => saveToFirestore(['agenda_config', 'main'], agendaData)} className="border-b border-black w-32 text-center bg-transparent focus:border-red-600 outline-none" placeholder="__/__/____" />
+                                    </div>
+                                    <div className="flex justify-center gap-3 mt-6">
+                                        {fpaDays.map(d => (
+                                            <button key={d} onClick={() => { const newDate = getDateForDayOfWeek(d); setAgendaData({ ...agendaData, dayOfWeek: d, date: newDate }); saveToFirestore(['agenda_config', 'main'], { ...agendaData, dayOfWeek: d, date: newDate }); }} className={`px-4 py-2 rounded-full font-black text-xs uppercase ${agendaData.dayOfWeek === d ? 'bg-red-600 text-white' : 'bg-neutral-100 text-neutral-400'}`}>{d}</button>
+                                        ))}
+                                    </div>
+                                </header>
+                                <div className="grid grid-cols-1 md:grid-cols-2 border-[4px] border-black bg-black gap-[4px]">
+                                    {allAgendaHours.map(hourStr => {
+                                        const syncKey = `${hourStr.replace('h.', '')}-${dayMap[agendaData.dayOfWeek || getTodayDayOfWeekStr()]}`;
+                                        const hourTasks = Array.isArray(agendaSemanalData.grid[syncKey]) ? agendaSemanalData.grid[syncKey] : [];
+                                        return (
+                                            <div key={hourStr} className="flex flex-col p-4 bg-white min-h-[80px] group/agendaslot">
+                                                <div className="flex items-center mb-3 border-b border-neutral-50 pb-1"><span className="font-black text-xl italic text-red-600">{hourStr}</span></div>
+                                                <div className="flex flex-col gap-3">
+                                                    {hourTasks.map((t, idx) => (
+                                                        <div key={idx} className="group/agendatask flex items-start gap-3">
+                                                            <button className="mt-1" onClick={() => toggleAgendaSemanalTask(syncKey, idx)}>{t.completed ? <SquareCheck className="w-5 h-5 text-black" /> : <Square className="w-5 h-5 text-black" />}</button>
+                                                            <span className={`flex-1 font-bold text-base uppercase italic pt-0.5 ${t.completed ? 'line-through text-neutral-300' : 'text-black'}`}>{t.text}</span>
+                                                            <div className="flex items-center gap-1 opacity-0 group-hover/agendatask:opacity-100 transition-opacity mt-1">
+                                                                <button onClick={() => returnAgendaSemanalToCiclo(syncKey, idx)} className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><LayoutGrid className="w-4 h-4" /></button>
+                                                                <button onClick={() => deleteAgendaSemanalTask(syncKey, idx)} className="p-1 hover:bg-red-50 rounded text-neutral-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* AGENDA SEMANAL */}
+                        {activeTab === 'agendaSemanal' && (
+                            <div className="animate-in fade-in duration-500 overflow-x-auto">
+                                <header className="mb-8 border-b-4 border-red-600 pb-4 flex justify-between items-end min-w-[900px]">
+                                    <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Agenda Semanal</h2>
+                                    <input value={agendaSemanalData.week} onChange={e => setAgendaSemanalData(p => ({...p, week: e.target.value}))} onBlur={() => saveToFirestore(['agenda_semanal_config', 'main'], agendaSemanalData)} className="w-32 border-b-2 border-black outline-none font-black text-right bg-transparent focus:border-red-600" placeholder="Semana..." />
+                                </header>
+                                <div className="border-[3px] border-black bg-black min-w-[900px] flex flex-col gap-[2px]">
+                                    <div className="flex bg-white">
+                                        <div className="w-14 border-r-2 border-black flex-shrink-0 bg-neutral-100 flex items-center justify-center font-black text-[10px]">HORA</div>
+                                        {agendaSemanalDayLabels.map(label => (<div key={label} className="flex-1 text-center py-2 font-black uppercase text-[10px] border-r border-neutral-200 last:border-r-0">{label}</div>))}
+                                    </div>
+                                    {agendaSemanalHours.map(hour => (
+                                        <div key={hour} className="flex bg-white min-h-[100px]">
+                                            <div className="w-14 border-r-2 border-black flex items-center justify-center bg-neutral-50 flex-shrink-0 font-black text-sm italic">{hour}h</div>
+                                            {agendaSemanalDays.map(day => {
+                                                const key = `${hour}-${day}`;
+                                                const rawVal = agendaSemanalData.grid[key];
+                                                const dayTasks = Array.isArray(rawVal) ? rawVal : (rawVal ? [{text: rawVal, completed: false, fromArea: 4}] : []);
+                                                return (
+                                                    <div key={day} className="flex-1 border-r border-neutral-100 last:border-r-0 p-2 flex flex-col gap-2">
+                                                        {dayTasks.map((t, idx) => (
+                                                            <div key={idx} className="group/weeklytask flex items-start gap-2 relative">
+                                                                <button className="mt-0.5 flex-shrink-0" onClick={() => toggleAgendaSemanalTask(key, idx)}>{t.completed ? <SquareCheck className="w-4 h-4 text-black" /> : <Square className="w-4 h-4 text-black" />}</button>
+                                                                <span className={`flex-1 min-w-0 break-words font-bold text-[10px] uppercase italic pt-0.5 ${t.completed ? 'line-through text-neutral-300' : 'text-black'}`}>{t.text}</span>
+                                                                <div className="hidden group-hover/weeklytask:flex items-center absolute right-0 bg-white/90">
+                                                                    <button onClick={() => deleteAgendaSemanalTask(key, idx)} className="p-0.5 hover:bg-red-50 rounded"><Trash2 className="w-3 h-3 text-red-600" /></button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* CICLO SEMANAL */}
+                        {activeTab === 'ciclo' && (
+                            <div className="animate-in fade-in duration-500">
+                                <header className="mb-10 border-b-4 border-black pb-6 flex justify-between items-end">
+                                    <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Ciclo Semanal</h2>
+                                    <div className="flex gap-4 font-black uppercase text-xs"><span>Semana:</span><input value={cicloConfig.week} onChange={e => setCicloConfig(p => ({...p, week: e.target.value}))} onBlur={() => saveToFirestore(['ciclo_config', 'main'], cicloConfig)} className="border-b border-black w-12 text-center bg-transparent focus:border-red-600 outline-none" /></div>
+                                </header>
+                                <div className="grid grid-cols-1 md:grid-cols-2 border-[4px] border-black bg-black gap-[4px]">
+                                    {[1,2,3,4].map(area => (
+                                        <div key={area} className="bg-white p-6 min-h-[300px] flex flex-col">
+                                            <div className="flex items-center gap-3 border-b-2 border-black pb-2 mb-6"><span className="font-black italic uppercase text-red-600">ÁREA {area}:</span><input value={cicloConfig[`area${area}`] || ''} onChange={e => setCicloConfig(p => ({...p, [`area${area}`]: e.target.value}))} onBlur={() => saveToFirestore(['ciclo_config', 'main'], cicloConfig)} className="flex-1 font-black uppercase outline-none bg-transparent" placeholder="Nome da Área..." /></div>
+                                            <div className="flex-1 space-y-3">
+                                                {cicloTasks.filter(t => t.area === area).map(t => (
+                                                    <div key={t.id} className="flex items-start gap-3 group/ciclotask">
+                                                        <button className="mt-1 flex-shrink-0" onClick={async () => { if(user&&db) await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', t.id), { completed: !t.completed }) }}>{t.completed ? <SquareCheck className="w-5 h-5 text-black" /> : <Square className="w-5 h-5" />}</button>
+                                                        <span className={`flex-1 min-w-0 break-words font-bold text-sm uppercase pt-0.5 ${t.completed ? 'line-through text-neutral-300' : 'text-black'}`}>{t.text}</span>
+                                                        <div className="flex items-center gap-1 transition-opacity mt-1 opacity-0 group-hover/ciclotask:opacity-100">
+                                                            <button onClick={() => cycleTaskArea(t)} title="Mudar Área" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><RefreshCw className="w-4 h-4" /></button>
+                                                            <button onClick={() => sendCicloToFpaPrioridades(t)} title="FPA Prioridades" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-red-600"><Star className="w-4 h-4" /></button>
+                                                            <button onClick={() => sendCicloToFpaExtras(t)} title="FPA Extras" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><FileUp className="w-4 h-4" /></button>
+                                                            <button onClick={() => returnTaskToDtq(t)} title="Devolver DTQ" className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-black"><ArrowLeft className="w-4 h-4" /></button>
+                                                            <button onClick={async () => { if(user&&db) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ciclo_tasks', t.id)) }} className="p-1 hover:bg-red-50 rounded text-neutral-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* DRD E CALENDÁRIO... */}
+                        {activeTab === 'drd' && (
+                            <div className="animate-in fade-in duration-500 overflow-x-auto">
+                                <header className="mb-8 border-b-4 border-red-600 pb-4 flex justify-between items-end min-w-[900px]"><h2 className="text-5xl font-black uppercase italic tracking-tighter leading-none">DRD</h2><div className="font-black text-sm uppercase opacity-40 leading-none">Sincronizado na Nuvem</div></header>
+                                <div className="border-[3px] border-black bg-black min-w-[900px] flex flex-col gap-[3px]"><div className="flex bg-white"><div className="w-12 border-r-2 border-black flex-shrink-0 bg-neutral-100"></div>{drdDayLabels.map(day => (<div key={day} className="flex-1 text-center py-3 font-black uppercase text-sm border-r border-neutral-200 last:border-r-0">{day}</div>))}</div>{drdPeriods.map((period, pIdx) => (<div key={period} className="flex bg-white"><div className="w-12 border-r-2 border-black flex items-center justify-center bg-neutral-50 flex-shrink-0"><span className="-rotate-90 font-black text-xs uppercase tracking-widest">{drdPeriodLabels[pIdx]}</span></div>{drdDays.map(day => (<div key={day} className="flex-1 min-h-[160px] border-r border-neutral-100 last:border-r-0 p-2"><textarea value={drdData.grid[`${period}-${day}`]||''} onChange={e => setDrdData(p => ({ ...p, grid: { ...p.grid, [`${period}-${day}`]: e.target.value } }))} onBlur={() => saveToFirestore(['drd_config', 'main'], drdData)} className="w-full h-full bg-transparent outline-none resize-none font-medium text-sm leading-tight" placeholder="..." /></div>))}</div>))}</div>
+                            </div>
+                        )}
+
+                        {activeTab === 'calendario' && (() => {
+                            const monthInfo = getMonthInfo(calendarioData.month);
+                            let offset = 0, daysInMonth = 31;
+                            if (monthInfo) { daysInMonth = new Date(monthInfo.year, monthInfo.month + 1, 0).getDate(); offset = new Date(monthInfo.year, monthInfo.month, 1).getDay(); offset = offset === 0 ? 6 : offset - 1; }
+                            const totalRows = Math.max(5, Math.ceil((offset + daysInMonth) / 7));
+                            return (
+                                <div className="animate-in fade-in duration-500 overflow-x-auto">
+                                    <header className="mb-8 border-b-4 border-black pb-4 flex justify-between items-end min-w-[900px]"><h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Agenda Mensal</h2><input value={calendarioData.month} onChange={e => setCalendarioData(p => ({...p, month: e.target.value}))} onBlur={() => saveToFirestore(['calendario_config', 'main'], calendarioData)} placeholder="Mês e Ano..." className="w-48 border-b-2 border-red-600 outline-none font-black text-right uppercase bg-transparent" /></header>
+                                    <div className="border-[3px] border-black bg-black min-w-[900px] flex flex-col gap-[2px]"><div className="flex bg-white">{calendarioDayLabels.map(label => (<div key={label} className="flex-1 text-center py-2 font-black uppercase text-xs border-r border-black last:border-r-0">{label}</div>))}</div>{Array.from({ length: totalRows }).map((_, r) => (<div key={r} className="flex bg-white min-h-[140px]">{[0,1,2,3,4,5,6].map(c => { const dayNum = (r * 7 + c) - offset + 1; const isDay = dayNum >= 1 && dayNum <= daysInMonth; const key = monthInfo ? `${monthInfo.year}-${monthInfo.month + 1}-${dayNum}` : `day-${dayNum}`; const rawVal = calendarioData.grid[key]; const dayTasks = Array.isArray(rawVal) ? rawVal : (rawVal && typeof rawVal === 'string' ? [{text: rawVal, completed: false}] : []); return (<div key={c} className={`flex-1 border-r border-neutral-100 last:border-r-0 p-2 flex flex-col ${!isDay ? 'bg-neutral-50' : ''}`}>{isDay && <span className="font-black text-[10px] mb-1 opacity-40 uppercase">DIA {dayNum}</span>}{isDay && (<div className="flex flex-col gap-1 flex-1 overflow-y-auto no-scrollbar">{dayTasks.map((t, idx) => (<div key={idx} className="group/caltask flex items-start gap-1"><button className="mt-0.5 flex-shrink-0" onClick={() => toggleCalendarioTask(key, idx)}>{t.completed ? <SquareCheck className="w-3 h-3 text-black" /> : <Square className="w-3 h-3 text-black" />}</button><span className={`flex-1 min-w-0 break-words font-bold text-[9px] uppercase italic pt-0.5 ${t.completed ? 'line-through text-neutral-300' : 'text-black'}`}>{t.text}</span><div className="flex items-center opacity-0 group-hover/caltask:opacity-100 transition-opacity">{!t.completed && (<button onClick={() => sendCalendarioToAgendaSemanal(key, idx)} className="p-0.5 hover:bg-neutral-100 rounded" title="Copiar para Agenda Semanal (5h)"><Calendar className="w-3 h-3" /></button>)}<button onClick={() => deleteCalendarioTask(key, idx)} className="p-0.5 text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-3 h-3" /></button></div></div>))}<div className="mt-auto pt-1 border-t border-dashed border-neutral-200 flex items-center gap-1 opacity-40 hover:opacity-100 transition-opacity"><Plus className="w-3 h-3 text-neutral-400" /><input placeholder="Nova..." className="w-full bg-transparent outline-none font-bold text-[9px] uppercase italic" onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value.trim()) { addCalendarioTask(key, e.target.value); e.target.value = ''; } }} /></div></div>)}</div>) })}</div>))}</div>
+                                </div>
+                            );
+                        })()}
+                    </main>
+
+                    <footer className="max-w-7xl w-full mx-auto mt-4 px-4 flex justify-between items-center text-[10px] font-black uppercase opacity-40 pb-4">
+                        <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${user ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+                            {user ? `ONLINE: ${user.uid.substring(0, 8)}...` : 'MODO OFFLINE (Aguardando Chave Nuvem)'}
+                        </div>
+                        <div>PLANNER #NOCOMANDO V2.1</div>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
